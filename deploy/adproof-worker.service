@@ -1,0 +1,30 @@
+[Unit]
+Description=AdProof single queue Worker
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=adproof
+Group=adproof
+WorkingDirectory=/opt/adproof/current
+EnvironmentFile=/etc/adproof/runtime.conf
+Environment=NODE_ENV=production
+Environment=ADPROOF_ANALYTICS_DIR=/var/lib/adproof/worker-analytics
+ExecStartPre=/usr/bin/node scripts/check-release.mjs
+ExecStart=/usr/bin/node dist-worker/index.mjs
+Restart=on-failure
+RestartSec=10
+# Graceful drain; schedule upgrades when idle. A forced kill requires lease recovery.
+TimeoutStopSec=900
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/adproof /opt/adproof/current/agent/data
+
+[Install]
+WantedBy=multi-user.target

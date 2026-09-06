@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><link rel="icon" href="data:,"><meta name="viewport" content="width=device-width,initial-scale=1"><title>模块后台</title><link rel="stylesheet" href="/module.css"></head>
+<body><div class="app">
+  <aside class="rail"><div class="brand"><i class="brand-mark"></i><span><strong>媒介助手</strong><small>OPS CONSOLE</small></span></div><div class="module-label">产品模块</div><nav id="railNav"></nav><div class="rail-footer"><strong>本地管理边界</strong><br>Skill 与 Eval 数据留在本机，不显示任何密钥原文。</div></aside>
+  <section class="workspace"><header class="topbar"><div class="title"><h1 id="pageTitle">后台管理</h1><p id="pageSubtitle">读取运行配置中…</p></div><div class="context" id="context"></div></header>
+  <main class="content"><div class="module-stripe"></div><div id="notice" class="notice"></div><section class="summary" id="metrics"><div class="loading">加载中…</div></section><div id="view"></div></main></section>
+</div><script>
+const moduleId=location.pathname.split("/").filter(Boolean).pop()==="audit"?"audit":"creators";
+const isCreator=moduleId==="creators", moduleName=isCreator?"达人检索":"内容审核", accent=isCreator?"creator":"audit";
+const $=(id)=>document.getElementById(id),esc=(v)=>String(v??"").replace(/[&<>"']/g,(m)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
+const state={data:null,selected:"",versions:[],diff:[]};
+function message(text,ok=false){const n=$("notice");n.textContent=text;n.className=`notice show ${ok?"ok":""}`;setTimeout(()=>n.className="notice",3500)}
+async function api(path,options){const response=await fetch(path,{cache:"no-store",...options});const body=await response.json();if(!response.ok)throw Error(body?.data?.error||"请求失败");return body.data}
+function shell(){document.title="运营与质量后台 · 媒介助手";$("pageTitle").textContent="运营与质量工作区";$("pageSubtitle").textContent="达人检索与内容审核共用同一套服务数据。";$("context").innerHTML=`<a class="active" href="/admin/${moduleId}">后台</a><a href="/eval/${moduleId}">Eval</a>`;$("railNav").innerHTML=`<a href="http://127.0.0.1:5173/${isCreator?"creators":"audit/new"}">返回业务系统</a><a class="${isCreator?"active creator-active":""}" href="/admin/creators">达人后台</a><a href="/eval/creators">达人 Eval</a><a class="${!isCreator?"active audit-active":""}" href="/admin/audit">审核后台</a><a href="/eval/audit">审核 Eval</a>`}
+async function load(){state.data=await api(`/api/module-admin/${moduleId}`);if(!state.selected)state.selected=state.data.skills[0]?.id||"";render()}
+function render(){const d=state.data,m=d.metrics;$("metrics").innerHTML=`<div class="metric"><span>Skills</span><strong>${m.enabledSkills}/${m.skills}</strong><em>当前启用</em></div><div class="metric"><span>Tools</span><strong>${m.enabledTools}/${m.tools}</strong><em>服务端注册</em></div><div class="metric"><span>Eval 用例</span><strong>${m.evalCases}</strong><em>独立于另一模块</em></div><div class="metric"><span>Agent / Eval 运行</span><strong>${m.agentRuns+m.evalRuns}</strong><em>本地记录</em></div>`;renderView()}
+function renderView(){const d=state.data,skill=d.skills.find((item)=>item.id===state.selected)||d.skills[0];$("view").innerHTML=`<section class="section"><div class="section-head"><div><h2>模型运行状态</h2><p>真实 Provider 缺配置时会返回 pending_llm，不会静默切换为演示结果。</p></div><span class="status ${d.provider.configured?"PASS":"REVIEW"}">${esc(d.provider.id)} · ${esc(d.provider.model)}</span></div><div class="section-body">${esc(d.provider.note)}</div></section><section class="section"><div class="section-head"><div><h2>Skill 注册中心</h2><p>保存前自动创建快照；适用与不适用场景参与调用边界说明。</p></div></div><div class="section-body split"><div class="list">${d.skills.map((item)=>`<button class="${item.id===skill?.id?"active":""}" data-skill="${esc(item.id)}"><strong>${esc(item.name)}</strong><small>${esc(item.id)} · v${item.version} · ${item.enabled?"启用":"停用"}</small></button>`).join("")}</div><div>${skill?editor(skill):`<div class="empty"><strong>暂无 Skill</strong>当前模块没有注册能力。</div>`}</div></div></section><section class="section"><div class="section-head"><div><h2>Tool 注册</h2><p>去重、排序和规则扫描会执行服务端本地函数；RedFox 与写库类只验证调用契约，不消耗外部额度、不修改业务数据。</p></div></div><div class="section-body cards">${d.tools.map((tool)=>`<article class="skill-card"><header><div><h3>${esc(tool.name)}</h3><span class="chip ${accent}">${esc(tool.id)}</span></div><span class="status ${tool.enabled?"on":"off"}">${tool.enabled?"已启用":"已停用"}</span></header><p>${esc(tool.description)}</p></article>`).join("")||`<div class="empty"><strong>暂无 Tool</strong></div>`}</div></section>`;bind()}
+function editor(skill){return `<div class="editor"><div class="grid-2"><div class="field"><label>名称</label><input id="skillName" value="${esc(skill.name)}"></div><div class="field"><label>模型</label><input id="skillModel" value="${esc(skill.model)}"></div></div><div class="grid-2"><div class="field"><label>温度</label><input id="skillTemperature" type="number" min="0" max="2" step="0.1" value="${skill.temperature}"></div><div class="field"><label>启用状态</label><select id="skillEnabled"><option value="true" ${skill.enabled?"selected":""}>启用</option><option value="false" ${!skill.enabled?"selected":""}>停用</option></select></div></div><div class="field"><label>描述</label><textarea id="skillDescription">${esc(skill.description)}</textarea></div><div class="grid-2"><div class="field"><label>适用场景（每行一条）</label><textarea id="skillUse">${esc((skill.useWhen||[]).join("\n"))}</textarea></div><div class="field"><label>不适用场景（每行一条）</label><textarea id="skillNot">${esc((skill.notFor||[]).join("\n"))}</textarea></div></div><div class="field"><label>System Prompt</label><textarea id="skillPrompt" style="min-height:150px">${esc(skill.prompt)}</textarea></div><div class="field"><label>变更说明</label><input id="changeNote" placeholder="例如：收紧图片证据不足时的调用边界"></div><div class="editor-actions"><button class="btn ${accent}" id="saveSkill">保存并创建快照</button><button class="btn secondary" id="loadVersions">查看版本</button></div><div id="versionPanel">${versions()}</div></div>`}
+function versions(){if(!state.versions.length)return "";return `<div class="section" style="margin-top:14px"><div class="section-body"><strong>历史版本</strong><div class="table-wrap"><table class="table"><thead><tr><th>快照</th><th>版本</th><th>说明</th><th>时间</th><th>操作</th></tr></thead><tbody>${state.versions.map((v)=>`<tr><td>${esc(v.id)}</td><td>v${v.version}</td><td>${esc(v.changeNote)}</td><td>${new Date(v.createdAt).toLocaleString("zh-CN")}</td><td><button class="btn secondary" data-diff="${v.id}">查看 diff</button> <button class="btn danger" data-restore="${v.id}">回滚</button></td></tr>`).join("")}</tbody></table></div>${state.diff.length?`<div class="mono">${esc(JSON.stringify(state.diff,null,2))}</div>`:""}</div></div>`}
+function bind(){document.querySelectorAll("[data-skill]").forEach((button)=>button.onclick=()=>{state.selected=button.dataset.skill;state.versions=[];state.diff=[];renderView()});const skill=state.data.skills.find((item)=>item.id===state.selected);if(!skill)return;$("saveSkill").onclick=async()=>{try{await api(`/api/module-admin/${moduleId}/skills/${encodeURIComponent(skill.id)}`,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:$("skillName").value,model:$("skillModel").value,temperature:Number($("skillTemperature").value),enabled:$("skillEnabled").value==="true",description:$("skillDescription").value,useWhen:$("skillUse").value.split("\n").map(v=>v.trim()).filter(Boolean),notFor:$("skillNot").value.split("\n").map(v=>v.trim()).filter(Boolean),prompt:$("skillPrompt").value,changeNote:$("changeNote").value})});message("Skill 已保存，修改前版本已创建快照。",true);await load()}catch(error){message(error.message)}};$("loadVersions").onclick=async()=>{try{state.versions=(await api(`/api/module-admin/${moduleId}/skills/${encodeURIComponent(skill.id)}/versions`)).versions;state.diff=[];renderView()}catch(error){message(error.message)}};document.querySelectorAll("[data-diff]").forEach((button)=>button.onclick=async()=>{state.diff=(await api(`/api/module-admin/${moduleId}/skills/${encodeURIComponent(skill.id)}/versions/${button.dataset.diff}/diff`)).diff;renderView()});document.querySelectorAll("[data-restore]").forEach((button)=>button.onclick=async()=>{if(!confirm("确认回滚到该快照？当前版本也会先保存。"))return;await api(`/api/module-admin/${moduleId}/skills/${encodeURIComponent(skill.id)}/versions/${button.dataset.restore}/restore`,{method:"POST"});message("已回滚 Skill。",true);state.versions=[];await load()})}
+const originalRenderView=renderView;
+renderView=function(){originalRenderView();enhanceAdmin()};
+function sampleToolInput(id){
+  if(id==="load_candidates")return {candidates:[{id:"creator-a",nickname:"样例达人 A"},{id:"creator-b",nickname:"样例达人 B"}]};
+  if(id==="dedupe_candidates")return {candidates:[{id:"same",nickname:"重复 A"},{id:"same",nickname:"重复 B"},{id:"unique",nickname:"唯一达人"}]};
+  if(id==="rank_candidates")return {candidates:[{id:"low",matchScore:60,activity:90},{id:"high",matchScore:95,activity:50},{id:"middle",matchScore:80,activity:70}]};
+  if(id==="audit_retrieve_knowledge")return {knowledgeChunks:["广告法禁用词规则","医疗美容功效宣称规则"]};
+  if(id==="audit_deterministic_rule_scan")return {text:"本产品全网第一，保证祛斑。"};
+  if(id==="audit_load_assets")return {assetUrls:["https://example.invalid/image-a.jpg","https://example.invalid/image-b.jpg"]};
+  return {sample:true};
+}
+function enhanceAdmin(){
+  const view=$("view");
+  const provider=view.querySelector(".section");
+  if(provider&&!$("plannerSection")){
+    const planner=document.createElement("section");
+    planner.className="section";planner.id="plannerSection";
+    planner.innerHTML=`<div class="section-head"><div><h2>Planner 预览</h2><p>使用当前模块已启用的 Skill 与 Tool 生成计划，并显示能力校验结果。</p></div><button class="btn ${accent}" id="previewPlan">预览计划</button></div><div class="section-body"><div class="field"><label>测试问题</label><textarea id="planQuestion">${isCreator?"找粉丝小于1500、做过光子嫩肤的活跃素人":"审核这篇含有‘全网第一’和祛斑功效承诺的小红书图文"}</textarea></div><div class="mono" id="planResult">尚未运行 Planner。</div></div>`;
+    provider.insertAdjacentElement("afterend",planner);
+    $("previewPlan").onclick=async()=>{const output=$("planResult");output.textContent="正在生成计划…";try{const result=await api(`/api/module-admin/${moduleId}/planner/preview`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:$("planQuestion").value})});output.textContent=JSON.stringify(result,null,2)}catch(error){output.textContent=`ERROR: ${error.message}`}};
+  }
+  const toolSection=[...view.querySelectorAll(".section")].find((section)=>section.querySelector("h2")?.textContent.includes("Tool"));
+  toolSection?.querySelectorAll(".skill-card").forEach((card,index)=>{
+    const tool=state.data.tools[index];if(!tool||card.querySelector("[data-tool]"))return;
+    const contractOnly=/^(redfox_|persist_|load_search_session|save_search_progress|audit_persist_)/.test(tool.id);const button=document.createElement("button");button.className="btn secondary";button.dataset.tool=tool.id;button.textContent=contractOnly?"验证调用契约":"运行本地测试";button.disabled=!tool.enabled;
+    const output=document.createElement("div");output.className="mono";output.textContent="等待测试。";
+    button.onclick=async()=>{output.textContent=contractOnly?"正在验证参数和调用边界…":"正在执行服务端本地函数…";try{const result=await api(`/api/module-admin/${moduleId}/tools/${encodeURIComponent(tool.id)}/test`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({input:sampleToolInput(tool.id)})});output.textContent=JSON.stringify(result,null,2)}catch(error){output.textContent=`ERROR: ${error.message}`}};
+    card.append(button,output);
+  });
+}
+const baseShell=shell;shell=function(){baseShell();$("railNav").insertAdjacentHTML("beforeend",`<a href="/models/${moduleId}">模型管理</a><a href="/ops/${moduleId}">运营中心</a><a href="/catalog/${moduleId}">数据中心</a>`)};
+shell();load().catch((error)=>message(`加载失败：${error.message}`));
+</script><script>
+(()=>{const path=location.pathname,mod=path.split('/').filter(Boolean).pop()==='audit'?'audit':'creators',isC=mod==='creators',name=isC?'达人检索':'内容审核',accent=isC?'creator':'audit';const c=document.getElementById('context');if(c){c.className='global-tabs';c.innerHTML=[['/agent/'+mod,'Agent 控制台'],['/admin/'+mod+'?focus=skills','Skills'],['/admin/'+mod+'?focus=tools','Tools'],['/planner/'+mod,'Planner'],['/models/'+mod,'模型管理'],['/ops/'+mod,'运营中心'],['/catalog/'+mod,'数据中心']].map(([h,l])=>`<a href="${h}" class="${location.pathname===h?'active':''}">${l}</a>`).join('')}const rail=document.getElementById('railNav');if(rail){const extra=[['/agent/'+mod,name+' Agent'],['/planner/'+mod,'Planner 管理']];extra.forEach(([h,l])=>{if(![...rail.querySelectorAll('a')].some(a=>a.getAttribute('href')===h)){const a=document.createElement('a');a.href=h;a.textContent=l;rail.appendChild(a)}})}})();
+</script><script>
+(()=>{const view=document.getElementById('view');const routeView=location.pathname.split('/').filter(Boolean).pop();const focus=new URLSearchParams(location.search).get('focus')||(['skills','tools'].includes(routeView)?routeView:null);const run=()=>{const editor=view?.querySelector('.editor');if(editor&&!editor.querySelector('[data-editor-tabs]')){const tabs=document.createElement('div');tabs.className='eval-tabs';tabs.dataset.editorTabs='1';tabs.innerHTML='<button class="active">基本信息</button><button>SKILL.md</button><button>模型参数</button><button>测试</button>';editor.prepend(tabs)}if(focus){const sections=[...view.querySelectorAll(':scope > .section')];sections.forEach(s=>{const h=s.querySelector('h2')?.textContent||'';const keep=focus==='skills'?h.includes('Skill')||h.includes('模型运行'):h.includes('Tool');s.style.display=keep?'':'none'})}};if(view){new MutationObserver(run).observe(view,{childList:true,subtree:true});run()}})();
+</script><script>
+(()=>{
+  const mount=()=>{
+    const view=document.getElementById("view");
+    if(!view || view.querySelector("[data-api-logs]")) return;
+    const usage=document.createElement("section");
+    usage.className="section";
+    usage.dataset.usageOverview="1";
+    usage.innerHTML='<div class="section-head"><div><h2>系统使用概况</h2><p>注册用户、活跃用户、采用率、模型与 RedFox API 调用数据来自服务端匿名聚合遥测。</p></div><button class="btn secondary" id="reloadUsage">刷新概况</button></div><div class="section-body"><div class="kpi-list" id="usageKpis"><div class="kpi">正在读取…</div></div><pre class="mono" id="usageNotes" style="margin-top:12px"></pre></div>';
+    const logsSection=document.createElement("section");
+    logsSection.className="section";
+    logsSection.dataset.apiLogs="1";
+    logsSection.innerHTML='<div class="section-head"><div><h2>接口调用日志</h2><p>展示 RedFox 与模型的真实请求过程；密钥、Cookie、密码和图片内容已脱敏/截断。</p></div><button class="btn secondary" id="reloadApiLogs">刷新日志</button></div><div class="section-body"><div class="grid-2"><label>提供方<select id="logProvider"><option value="">全部</option><option value="redfox">RedFox</option><option value="deepseek">DeepSeek</option><option value="openai-compatible">OpenAI compatible</option></select></label><label>状态<select id="logStatus"><option value="">全部</option><option value="success">成功</option><option value="error">错误</option><option value="blocked">阻断</option></select></label></div><div id="apiLogList" class="table-wrap"><div class="empty">正在读取接口日志…</div></div></div>';
+    view.append(usage,logsSection);
+    const loadUsage=async()=>{
+      const box=document.getElementById("usageKpis"); if(!box)return;
+      try{
+        const body=await (await fetch("/api/analytics/overview",{cache:"no-store"})).json();
+        const d=body.data||{};
+        box.innerHTML='<div class="kpi">注册用户<strong>'+Number(d.registeredUsers||0)+'</strong></div><div class="kpi">今日活跃<strong>'+Number(d.activeUsersToday||0)+'</strong></div><div class="kpi">采用率<strong>'+(d.adoptionRate==null?"—":d.adoptionRate+"%")+'</strong></div><div class="kpi">API 调用<strong>'+Number(d.totalApiCalls||0)+'</strong></div><div class="kpi">API 错误<strong>'+Number(d.totalApiErrors||0)+'</strong></div><div class="kpi">观测事件<strong>'+Number(d.eventCount||0)+'</strong></div>';
+        document.getElementById("usageNotes").textContent=(d.apiUsage||[]).map((x)=>x.provider+"："+x.calls+" 次，错误 "+x.errors+" 次，平均 "+(x.avgDurationMs==null?"—":x.avgDurationMs+" ms")).join("\n")||"暂无 API 调用记录";
+      }catch(error){box.innerHTML='<div class="empty">概况读取失败：'+esc(error.message||error)+'</div>';}
+    };
+    const loadLogs=async()=>{
+      const list=document.getElementById("apiLogList"); if(!list)return;
+      list.innerHTML='<div class="empty">正在读取接口日志…</div>';
+      try{
+        const module=location.pathname.endsWith("/audit")?"audit":"creator";
+        const query=new URLSearchParams({limit:"100",module});
+        const provider=document.getElementById("logProvider")?.value; const status=document.getElementById("logStatus")?.value;
+        if(provider)query.set("provider",provider); if(status)query.set("status",status);
+        const body=await (await fetch("/api/analytics/logs?"+query.toString(),{cache:"no-store"})).json();
+        const logs=body.data?.logs||[];
+        if(!logs.length){list.innerHTML='<div class="empty">暂无接口调用日志。执行一次检索或审核后会显示。</div>';return;}
+        list.innerHTML='<table class="table"><thead><tr><th>时间</th><th>提供方</th><th>接口</th><th>状态</th><th>耗时</th><th>重试</th><th>详情</th></tr></thead><tbody>'+logs.map((x,index)=>'<tr><td>'+new Date(x.createdAt).toLocaleString("zh-CN")+'</td><td>'+esc(x.provider)+'</td><td><code>'+esc(x.endpoint)+'</code></td><td>'+esc(x.status==="success"?"成功":x.status==="error"?"错误":"阻断")+'</td><td>'+Number(x.durationMs||0)+' ms</td><td>'+Number(x.attempt||0)+'</td><td><button class="btn secondary" data-log-index="'+index+'">查看入参/出参</button></td></tr>').join("")+'</tbody></table><pre id="apiLogDetail" class="mono" style="display:none;margin-top:12px"></pre>';
+        list.querySelectorAll("[data-log-index]").forEach((button)=>button.onclick=()=>{const item=logs[Number(button.dataset.logIndex)];const detail=document.getElementById("apiLogDetail");if(detail){detail.style.display="block";detail.textContent=JSON.stringify({request:item.request,response:item.response,error:item.error,statusCode:item.statusCode},null,2);}});
+      }catch(error){list.innerHTML='<div class="empty">接口日志读取失败：'+esc(error.message||error)+'</div>';}
+    };
+    document.getElementById("reloadUsage").onclick=loadUsage;
+    document.getElementById("reloadApiLogs").onclick=loadLogs;
+    document.getElementById("logProvider").onchange=loadLogs;
+    document.getElementById("logStatus").onchange=loadLogs;
+    loadUsage(); loadLogs();
+  };
+  const observer=new MutationObserver(mount);
+  observer.observe(document.body,{childList:true,subtree:true});
+  mount();
+})();
+</script></body></html>
+<script>
+(function(){
+  var style=document.createElement('style');
+  style.textContent='.rail{display:none!important}.app{display:block!important;min-height:100vh}.workspace{display:block!important;width:100%!important;min-width:0!important;grid-column:1/-1!important;margin-left:0!important}.topbar{width:100%!important;padding-left:34px!important}.content{width:100%!important;max-width:1500px!important;margin:0 auto!important}.global-tabs{display:flex;gap:10px;align-items:center}.global-tabs a{padding:9px 14px;border-radius:9px;text-decoration:none;color:#526983}.global-tabs a.active{background:#e8efff;color:#315de6;font-weight:700}';
+  document.head.appendChild(style);
+  function applyShell(){
+    var rail=document.querySelector('.rail'); if(rail) rail.setAttribute('aria-hidden','true');
+    var context=document.getElementById('context');
+    if(context && context.dataset.unifiedAdmin!=='1'){
+      context.className='global-tabs';
+      context.innerHTML='<a class="active" href="/admin/'+(location.pathname.endsWith('/audit')?'audit':'creators')+'">后台管理</a><a href="/eval">Eval</a>';
+      context.dataset.unifiedAdmin='1';
+    }
+  }
+  var busy=false;
+  async function refreshLogs(){
+    if(busy)return; var list=document.getElementById('apiLogList'); if(!list)return; busy=true;
+    try{
+      var response=await fetch('/api/analytics/logs?limit=100',{cache:'no-store'}); var body=await response.json(); var logs=body.data&&body.data.logs||[];
+      if(!logs.length){list.innerHTML='<div class="empty">暂无接口调用日志。运行中的请求完成一个步骤后会自动出现。</div>';return;}
+      list.innerHTML='<table class="table"><thead><tr><th>时间</th><th>提供方</th><th>接口</th><th>状态</th><th>耗时</th><th>重试</th><th>详情</th></tr></thead><tbody>'+logs.map(function(x,i){return '<tr><td>'+new Date(x.createdAt).toLocaleString('zh-CN')+'</td><td>'+String(x.provider||'')+'</td><td><code>'+String(x.endpoint||'')+'</code></td><td>'+String(x.status||'')+'</td><td>'+Number(x.durationMs||0)+' ms</td><td>'+Number(x.attempt||0)+'</td><td><button class="btn secondary" data-live-log="'+i+'">查看入参/出参</button></td></tr>';}).join('')+'</tbody></table><pre id="liveApiLogDetail" class="mono" style="display:none;margin-top:12px"></pre>';
+      list.querySelectorAll('[data-live-log]').forEach(function(button){button.onclick=function(){var item=logs[Number(button.dataset.liveLog)],detail=document.getElementById('liveApiLogDetail');if(detail){detail.style.display='block';detail.textContent=JSON.stringify({request:item.request,response:item.response,error:item.error,statusCode:item.statusCode},null,2);}}});
+    }catch(error){list.innerHTML='<div class="empty">接口日志读取失败：'+String(error.message||error)+'</div>';}finally{busy=false;}
+  }
+  function setup(){applyShell();}
+  setup();
+  new MutationObserver(function(mutations){var list=document.getElementById('apiLogList');var relevant=mutations.some(function(m){return !list || !list.contains(m.target);});if(relevant)setup();}).observe(document.body,{childList:true,subtree:true});
+  // 接口日志只在用户点击“刷新日志”时更新，避免展开详情时被自动重绘。
+})();
+</script><style id="admin-v2-style">
+  #adminTabs{display:flex;gap:8px;margin:0 0 18px;background:#eef4fb;border:1px solid #d6e2ef;border-radius:12px;padding:6px}
+  #adminTabs button{border:0;background:transparent;color:#526983;border-radius:9px;padding:11px 22px;font-weight:700;cursor:pointer}
+  #adminTabs button.active{background:#fff;color:#2360dc;box-shadow:0 2px 8px rgba(45,83,135,.14)}
+  #adminBasePanel,#adminLogsPanel{background:#fff;border:1px solid #d7e1ec;border-radius:16px;padding:22px;margin-bottom:20px}
+  #adminLogsPanel[hidden]{display:none}
+  .admin-metric-group{padding:18px 0;border-top:1px solid #e7edf4}.admin-metric-group:first-child{padding-top:0;border-top:0}.admin-group-title{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}.admin-group-title h3{margin:0;color:#14213d;font-size:16px}.admin-group-title span{color:#71839c;font-size:12px}
+  .admin-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0}
+  .admin-kpi{border:1px solid #dce6f0;border-radius:12px;padding:16px;min-width:0}
+  .admin-kpi span{display:block;color:#647996;font-size:13px;margin-bottom:8px}
+  .admin-kpi strong{display:block;color:#14213d;font-size:28px;line-height:1.1}
+  .admin-kpi em{display:block;color:#6d829d;font-size:12px;font-style:normal;margin-top:7px}
+  .admin-subhead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:14px}
+  .admin-subhead h2{margin:0 0 4px;font-size:20px}.admin-subhead p{margin:0;color:#71839c;font-size:14px}
+  .admin-filters{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px;color:#526983;font-size:14px}
+  .admin-filters select{padding:8px 10px;border:1px solid #cbd8e7;border-radius:8px;background:#fff;color:#304b6b}
+  .admin-log-table{width:100%;border-collapse:collapse;font-size:13px}.admin-log-table th,.admin-log-table td{text-align:left;padding:11px 9px;border-bottom:1px solid #e7edf4;vertical-align:top}.admin-log-table th{color:#647996;font-weight:600;white-space:nowrap}.admin-log-table code{font-size:12px;color:#315b9d;word-break:break-all}.admin-log-table .btn{padding:6px 9px;font-size:12px}.admin-log-detail{display:none;background:#f8fbff}.admin-log-detail.open{display:table-row}.admin-log-detail td{padding:14px}.admin-log-detail pre{white-space:pre-wrap;word-break:break-word;margin:0;max-height:320px;overflow:auto;background:#f2f6fb;border:1px solid #dce6f0;border-radius:8px;padding:12px;color:#304b6b;font-size:12px}
+  @media(max-width:1000px){.admin-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){#adminBasePanel,#adminLogsPanel{padding:14px}.admin-kpis{grid-template-columns:1fr}.admin-group-title{align-items:flex-start;flex-direction:column;gap:4px}.admin-log-table{min-width:760px}.admin-log-scroll{overflow:auto}}
+  /* 后台管理的基础数据 / 接口数据采用顶部横向 tab，避免窄屏竖排。 */
+  .content{display:block!important;min-width:0}
+  #adminTabs{display:flex;flex-direction:row;align-items:center;gap:8px;width:max-content;max-width:100%;overflow:auto;margin:0 0 18px;background:#eef4fb;border:1px solid #d6e2ef;border-radius:12px;padding:6px;position:static}
+  #adminTabs button{width:auto;min-width:112px;text-align:center;padding:11px 22px;white-space:nowrap}
+  #adminBasePanel,#adminLogsPanel{margin:0 0 20px;min-width:0}
+  #view{display:none!important}
+  body.focus-view #notice{display:none!important}
+  @media(max-width:760px){#adminTabs{width:100%;justify-content:flex-start}#adminTabs button{min-width:104px;padding:11px 15px}#adminBasePanel,#adminLogsPanel{margin-bottom:14px}}</style>
+<script>
+(function(){
+  var esc=function(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+  var overviewCache=null, logBusy=false;
+  function ensurePanels(){
+    var content=document.querySelector('.content'), metrics=document.getElementById('metrics'); if(!content||!metrics)return false;
+    metrics.style.display='none';
+    var tabs=document.getElementById('adminTabs');
+    if(!tabs){tabs=document.createElement('div');tabs.id='adminTabs';tabs.innerHTML='<button class="active" data-admin-tab="base">基础数据</button><button data-admin-tab="logs">接口数据</button>';metrics.parentNode.insertBefore(tabs,metrics);tabs.querySelectorAll('button').forEach(function(b){b.onclick=function(){tabs.querySelectorAll('button').forEach(function(x){x.classList.remove('active')});b.classList.add('active');var base=document.getElementById('adminBasePanel'),logs=document.getElementById('adminLogsPanel');if(base)base.hidden=b.dataset.adminTab!=='base';if(logs)logs.hidden=b.dataset.adminTab!=='logs';if(b.dataset.adminTab==='logs')loadLogs()}})}
+    var base=document.getElementById('adminBasePanel');
+    if(!base){base=document.createElement('section');base.id='adminBasePanel';base.innerHTML='<div class="admin-subhead"><div><h2>基础数据</h2><p>聚焦用户增长、活跃与核心功能使用，统计窗口为最近 30 天。</p></div><button class="btn secondary" id="adminRefreshBase">刷新数据</button></div><div id="adminKpis"><div class="empty">正在读取基础数据…</div></div>';tabs.insertAdjacentElement('afterend',base)}
+    var logs=document.getElementById('adminLogsPanel');
+    if(!logs){logs=document.createElement('section');logs.id='adminLogsPanel';logs.hidden=true;logs.innerHTML='<div class="admin-subhead"><div><h2>接口数据</h2><p>RedFox 与模型请求的实时服务端日志；密钥、Cookie、密码和图片内容已脱敏或截断。</p></div><button class="btn secondary" id="adminRefreshLogs">刷新日志</button></div><div class="admin-filters"><label>提供方 <select id="adminLogProvider"><option value="">全部</option><option value="redfox">RedFox</option><option value="deepseek">DeepSeek</option><option value="openai-compatible">OpenAI compatible</option></select></label><label>状态 <select id="adminLogStatus"><option value="">全部</option><option value="success">成功</option><option value="error">错误</option><option value="blocked">阻断</option></select></label><span id="adminLogUpdated"></span></div><div class="admin-log-scroll" id="adminLogList"><div class="empty">正在读取接口日志…</div></div>';base.insertAdjacentElement('afterend',logs)}
+    var oldView=document.getElementById('view');if(oldView){oldView.style.display='none';oldView.setAttribute('aria-hidden','true')}
+    var reload=document.getElementById('adminRefreshBase');if(reload&&!reload.dataset.bound){reload.dataset.bound='1';reload.onclick=loadOverview}
+    var rlogs=document.getElementById('adminRefreshLogs');if(rlogs&&!rlogs.dataset.bound){rlogs.dataset.bound='1';rlogs.onclick=loadLogs}
+    ['adminLogProvider','adminLogStatus'].forEach(function(id){var el=document.getElementById(id);if(el&&!el.dataset.bound){el.dataset.bound='1';el.onchange=loadLogs}});
+    return true;
+  }
+  function loadOverview(){
+    var box=document.getElementById('adminKpis');if(!box)return;
+    box.innerHTML='<div class="empty">正在读取基础数据…</div>';
+    fetch('/api/analytics/overview',{cache:'no-store'}).then(function(r){return r.json().then(function(d){if(!r.ok)throw Error(d.error||'统计读取失败');return d.data||{}})}).then(function(d){overviewCache=d;var percent=function(v){return v==null?'—':esc(v)+'%'};box.innerHTML='<section class="admin-metric-group"><div class="admin-group-title"><h3>用户规模</h3><span>判断获客是否持续增长</span></div><div class="admin-kpis"><div class="admin-kpi"><span>累计注册用户</span><strong>'+Number(d.registeredUsers||0)+'</strong><em>全部已记录注册账号</em></div><div class="admin-kpi"><span>今日新增用户</span><strong>'+Number(d.newUsersToday||0)+'</strong><em>今天完成注册的用户</em></div><div class="admin-kpi"><span>今日活跃用户</span><strong>'+Number(d.activeUsersToday||0)+'</strong><em>DAU，按用户去重</em></div><div class="admin-kpi"><span>近 7 日活跃用户</span><strong>'+Number(d.activeUsers7d||0)+'</strong><em>WAU，按用户去重</em></div></div></section><section class="admin-metric-group"><div class="admin-group-title"><h3>使用质量</h3><span>判断用户是否真正使用核心价值</span></div><div class="admin-kpis"><div class="admin-kpi"><span>近 7 日回访用户</span><strong>'+Number(d.returningUsers7d||0)+'</strong><em>7 天内至少活跃 2 天</em></div><div class="admin-kpi"><span>7 日回访率</span><strong>'+percent(d.returningRate7d)+'</strong><em>回访用户 ÷ 7 日活跃用户</em></div><div class="admin-kpi"><span>核心功能用户</span><strong>'+Number(d.adoptedUsers||0)+'</strong><em>近 30 天使用过检索或审核</em></div><div class="admin-kpi"><span>核心功能采用率</span><strong>'+percent(d.adoptionRate)+'</strong><em>核心功能用户 ÷ 注册用户</em></div></div></section><section class="admin-metric-group"><div class="admin-group-title"><h3>今日核心行为</h3><span>只统计成功创建的真实任务</span></div><div class="admin-kpis"><div class="admin-kpi"><span>核心任务发起</span><strong>'+Number(d.coreTasksToday||0)+'</strong><em>找达人与内容审核合计</em></div><div class="admin-kpi"><span>达人检索</span><strong>'+Number(d.creatorSearchesToday||0)+'</strong><em>今日成功创建的检索任务</em></div><div class="admin-kpi"><span>内容审核</span><strong>'+Number(d.auditsToday||0)+'</strong><em>今日成功创建的审核任务</em></div></div></section>'}).catch(function(e){box.innerHTML='<div class="empty">基础数据读取失败：'+esc(e.message||e)+'</div>'})
+  }
+  function loadLogs(){
+    var list=document.getElementById('adminLogList');if(!list||logBusy)return;logBusy=true;list.innerHTML='<div class="empty">正在读取接口日志…</div>';
+    var q=new URLSearchParams({limit:'100'}),p=document.getElementById('adminLogProvider')?.value,s=document.getElementById('adminLogStatus')?.value;if(p)q.set('provider',p);if(s)q.set('status',s);
+    fetch('/api/analytics/logs?'+q.toString(),{cache:'no-store'}).then(function(r){return r.json().then(function(d){if(!r.ok)throw Error(d.error||'日志读取失败');return d.data?.logs||[]})}).then(function(logs){if(!logs.length){list.innerHTML='<div class="empty">暂无接口调用日志。执行一次检索或审核后会显示。</div>';return}var html='<table class="admin-log-table"><thead><tr><th>时间</th><th>提供方</th><th>接口</th><th>状态</th><th>耗时</th><th>重试</th><th>操作</th></tr></thead><tbody>';logs.forEach(function(x,i){var detail=esc(JSON.stringify({request:x.request,response:x.response,error:x.error,statusCode:x.statusCode},null,2));html+='<tr><td>'+new Date(x.createdAt).toLocaleString('zh-CN')+'</td><td>'+esc(x.provider)+'</td><td><code>'+esc(x.endpoint)+'</code></td><td>'+esc(x.status==='success'?'成功':x.status==='error'?'错误':'阻断')+'</td><td>'+Number(x.durationMs||0)+' ms</td><td>'+Number(x.attempt||0)+'</td><td><button class="btn secondary" data-admin-log="'+i+'">查看入参/出参</button></td></tr><tr class="admin-log-detail" id="adminLogDetail'+i+'"><td colspan="7"><pre>'+detail+'</pre></td></tr>'});html+='</tbody></table>';list.innerHTML=html;list.querySelectorAll('[data-admin-log]').forEach(function(b){b.onclick=function(){var row=document.getElementById('adminLogDetail'+b.dataset.adminLog);if(row)row.classList.toggle('open')}});var updated=document.getElementById('adminLogUpdated');if(updated)updated.textContent='已更新 '+new Date().toLocaleTimeString('zh-CN')}).catch(function(e){list.innerHTML='<div class="empty">接口日志读取失败：'+esc(e.message||e)+'</div>'}).finally(function(){logBusy=false})
+  }
+  function setup(){if(!ensurePanels())return;var base=document.getElementById('adminBasePanel');if(base&&!base.dataset.loaded){base.dataset.loaded='1';loadOverview()}}
+  setup();setTimeout(setup,80);setTimeout(setup,500);new MutationObserver(function(){setup()}).observe(document.body,{childList:true,subtree:true});
+})();
+</script><style id="admin-brand-style">
+.title{display:flex!important;align-items:center;gap:14px;flex-wrap:wrap}.admin-brand{display:flex;align-items:center;gap:9px;font-size:20px;color:#14213d;white-space:nowrap}.admin-mark{width:18px;height:18px;background:#4f7cf3;display:inline-block;transform:rotate(45deg);border-radius:4px}.title h1{margin:0!important}.title p{flex-basis:100%;margin:0 0 0 28px!important}
+</style>
+<script>(function(){var t=document.querySelector('.title');if(t&&!document.getElementById('adminBrand'))t.insertAdjacentHTML('afterbegin','<div id="adminBrand" class="admin-brand"><i class="admin-mark" aria-hidden="true"></i><strong>媒介助手</strong></div>');})();</script>
+<script>
+/* Skills editor tabs: the tabs are functional panels, not decorative buttons. */
+(function () {
+  var activeTab = "basic";
+  var readyEditor = null;
+  var testPanel = null;
+  function fieldByLabel(editor, text) {
+    return Array.prototype.find.call(editor.querySelectorAll(".field"), function (field) {
+      return (field.querySelector("label")?.textContent || "").indexOf(text) >= 0;
+    });
+  }
+  function makeTestPanel(editor) {
+    if (testPanel && testPanel.isConnected) return testPanel;
+    testPanel = document.createElement("div");
+    testPanel.className = "skill-test-panel";
+    testPanel.style.cssText = "border:1px solid #d7e1ec;border-radius:12px;padding:16px;background:#f8fbff;margin-bottom:16px";
+    testPanel.innerHTML = '<div style="font-weight:700;margin-bottom:8px">测试当前 Skill</div>' +
+      '<p style="margin:0 0 12px;color:#6d829d;font-size:13px">验证当前 Skill 的输入契约与配置，不会修改生产数据。</p>' +
+      '<textarea data-skill-test-input rows="5" placeholder="输入一段测试内容"></textarea>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:10px"><button type="button" class="btn creator" data-run-skill-test>运行测试</button><span data-skill-test-status style="color:#6d829d;font-size:13px"></span></div>' +
+      '<pre data-skill-test-output class="mono" style="display:none;margin-top:12px;white-space:pre-wrap;word-break:break-word"></pre>';
+    var tabs = editor.querySelector("[data-editor-tabs]");
+    if (tabs) tabs.insertAdjacentElement("afterend", testPanel);
+    testPanel.querySelector("[data-run-skill-test]").onclick = function () {
+      var input = testPanel.querySelector("[data-skill-test-input]").value.trim();
+      var output = testPanel.querySelector("[data-skill-test-output]");
+      var status = testPanel.querySelector("[data-skill-test-status]");
+      if (!input) { status.textContent = "请先输入测试内容"; output.style.display = "none"; return; }
+      var selected = document.querySelector("[data-skill].active");
+      var skillId = selected && selected.dataset.skill;
+      var enabled = document.getElementById("skillEnabled")?.value === "true";
+      var promptConfigured = Boolean(document.getElementById("skillPrompt")?.value.trim());
+      var result = { skillId: skillId || null, input: input, enabled: enabled, promptConfigured: promptConfigured, status: enabled && promptConfigured ? "可调用" : "配置不完整", note: "此页仅做配置与契约校验；真实执行由 Agent 主链路完成。" };
+      status.textContent = result.status === "可调用" ? "校验通过" : "配置不完整";
+      output.textContent = JSON.stringify(result, null, 2);
+      output.style.display = "block";
+    };
+    return testPanel;
+  }
+  function applyTab(editor, tab) {
+    activeTab = tab;
+    var tabs = editor.querySelector("[data-editor-tabs]");
+    if (tabs) Array.prototype.forEach.call(tabs.querySelectorAll("button"), function (button) {
+      button.classList.toggle("active", button.dataset.skillTab === tab);
+      button.setAttribute("aria-selected", button.dataset.skillTab === tab ? "true" : "false");
+    });
+    var basicFields = [fieldByLabel(editor, "名称"), fieldByLabel(editor, "描述"), fieldByLabel(editor, "适用场景"), fieldByLabel(editor, "不适用场景"), fieldByLabel(editor, "启用状态")].filter(Boolean);
+    var paramFields = [fieldByLabel(editor, "模型"), fieldByLabel(editor, "温度"), fieldByLabel(editor, "启用状态")].filter(Boolean);
+    var promptField = fieldByLabel(editor, "System Prompt");
+    Array.prototype.forEach.call(editor.querySelectorAll(".field"), function (field) { field.style.display = "none"; });
+    var visible = tab === "prompt" ? [promptField] : tab === "params" ? paramFields : tab === "test" ? [] : basicFields;
+    visible.filter(Boolean).forEach(function (field) { field.style.display = ""; });
+    var actions = editor.querySelector(".editor-actions");
+    if (actions) actions.style.display = tab === "test" ? "none" : "flex";
+    var versions = editor.querySelector("#versionPanel");
+    if (versions) versions.style.display = tab === "basic" ? "" : "none";
+    var panel = makeTestPanel(editor);
+    if (panel) panel.style.display = tab === "test" ? "block" : "none";
+  }
+  function bind() {
+    var editor = document.querySelector("#view .editor");
+    if (!editor) return;
+    var tabs = editor.querySelector("[data-editor-tabs]");
+    if (!tabs) return;
+    if (readyEditor !== editor) {
+      readyEditor = editor;
+      var keys = ["basic", "prompt", "params", "test"];
+      Array.prototype.forEach.call(tabs.querySelectorAll("button"), function (button, index) {
+        button.type = "button";
+        button.dataset.skillTab = keys[index] || "basic";
+        button.onclick = function () { applyTab(editor, button.dataset.skillTab); };
+      });
+      activeTab = "basic";
+    }
+    applyTab(editor, activeTab);
+  }
+  new MutationObserver(bind).observe(document.body, { childList: true, subtree: true });
+  bind();
+})();
+</script>
+<script>
+/* Admin feedback desk: local-only and backed by Supabase service role. */
+(function () {
+  var escText = function (v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]; }); };
+  var categoryLabel = { bug: "Bug 反馈", suggestion: "功能建议", question: "使用问题", other: "其他" };
+  var statusLabel = { open: "待处理", in_progress: "处理中", resolved: "已解决", closed: "已关闭" };
+  var panelReady = false;
+  function authHeaders() { return {}; }
+  function syncPanels() {
+    var tabs = document.getElementById("adminTabs"), base = document.getElementById("adminBasePanel"), logs = document.getElementById("adminLogsPanel"), feedback = document.getElementById("adminFeedbackPanel");
+    if (!tabs || !base || !logs || !feedback) return;
+    var active = tabs.querySelector("button.active")?.dataset.adminTab || "base";
+    feedback.hidden = active !== "feedback";
+    base.hidden = active !== "base";
+    logs.hidden = active !== "logs";
+  }
+  function renderSummary(summary) {
+    return '<div class="feedback-admin-summary"><div><span>全部工单</span><strong>' + Number(summary.total || 0) + '</strong></div><div><span>待处理</span><strong>' + Number(summary.open || 0) + '</strong></div><div><span>处理中</span><strong>' + Number(summary.inProgress || 0) + '</strong></div><div><span>Bug 反馈</span><strong>' + Number(summary.bugs || 0) + '</strong></div></div>';
+  }
+  function renderTickets(tickets) {
+    if (!tickets.length) return '<div class="empty">暂无用户反馈。</div>';
+    var rows = tickets.map(function (ticket) {
+      return '<tr data-feedback-id="' + escText(ticket.id) + '"><td>' + new Date(ticket.created_at).toLocaleString("zh-CN") + '</td><td><code>' + escText(String(ticket.user_id).slice(0, 8)) + '</code></td><td><span class="feedback-admin-chip">' + escText(categoryLabel[ticket.category] || ticket.category) + '</span><strong class="feedback-admin-title">' + escText(ticket.title) + '</strong><p class="feedback-admin-description">' + escText(ticket.description) + '</p>' + (ticket.page_path ? '<small>页面：' + escText(ticket.page_path) + '</small>' : '') + '</td><td><select data-feedback-status><option value="open" ' + (ticket.status === "open" ? "selected" : "") + '>待处理</option><option value="in_progress" ' + (ticket.status === "in_progress" ? "selected" : "") + '>处理中</option><option value="resolved" ' + (ticket.status === "resolved" ? "selected" : "") + '>已解决</option><option value="closed" ' + (ticket.status === "closed" ? "selected" : "") + '>已关闭</option></select><select data-feedback-priority><option value="low" ' + (ticket.priority === "low" ? "selected" : "") + '>低优先级</option><option value="normal" ' + (ticket.priority === "normal" ? "selected" : "") + '>普通</option><option value="high" ' + (ticket.priority === "high" ? "selected" : "") + '>高优先级</option><option value="urgent" ' + (ticket.priority === "urgent" ? "selected" : "") + '>紧急</option></select></td><td><textarea data-feedback-reply placeholder="填写给用户的处理回复">' + escText(ticket.admin_reply || "") + '</textarea><button class="btn secondary" data-feedback-save>保存处理</button><span class="feedback-admin-save-status"></span></td></tr>';
+    }).join("");
+    return '<div class="admin-feedback-scroll"><table class="admin-feedback-table"><thead><tr><th>时间</th><th>用户</th><th>反馈内容</th><th>状态 / 优先级</th><th>处理回复</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  async function loadFeedback() {
+    var panel = document.getElementById("adminFeedbackPanel"), body = document.getElementById("adminFeedbackBody"), authMessage = document.getElementById("feedbackAuthMessage");
+    if (!panel || !body) return;
+    body.innerHTML = '<div class="empty">正在读取用户反馈…</div>';
+    try {
+      var response = await fetch("/api/admin/feedback", { cache: "no-store", headers: authHeaders() });
+      var payload = await response.json();
+      if (!response.ok) throw Error(payload.error || "反馈读取失败");
+      body.innerHTML = renderSummary(payload.data.summary) + renderTickets(payload.data.tickets || []);
+      if (authMessage) authMessage.textContent = "已连接";
+      body.querySelectorAll("[data-feedback-save]").forEach(function (button) { button.onclick = async function () {
+        var row = button.closest("[data-feedback-id]"), status = row.querySelector("[data-feedback-status]").value, priority = row.querySelector("[data-feedback-priority]").value, reply = row.querySelector("[data-feedback-reply]").value, result = row.querySelector(".feedback-admin-save-status");
+        button.disabled = true; result.textContent = "保存中…";
+        try { var saved = await fetch("/api/admin/feedback/" + encodeURIComponent(row.dataset.feedbackId), { method: "PATCH", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify({ status: status, priority: priority, admin_reply: reply }) }); var savedBody = await saved.json(); if (!saved.ok) throw Error(savedBody.error || "保存失败"); result.textContent = "已保存"; setTimeout(function () { result.textContent = ""; }, 1800); } catch (error) { result.textContent = error.message || "保存失败"; } finally { button.disabled = false; }
+      }; });
+    } catch (error) { body.innerHTML = '<div class="empty">' + escText(error.message || "反馈读取失败") + '</div>'; if (authMessage) authMessage.textContent = "连接失败"; }
+  }
+  function addFeedbackMetric() {
+    var kpis = document.getElementById("adminKpis");
+    if (!kpis || kpis.querySelector("[data-feedback-metric]")) return;
+    fetch("/api/analytics/overview", { cache: "no-store" }).then(function (response) { return response.json(); }).then(function (payload) {
+      var f = payload.data?.feedback; if (!f || kpis.querySelector("[data-feedback-metric]")) return;
+      var group = document.createElement("section"); group.className = "admin-metric-group"; group.dataset.feedbackMetric = "1";
+      group.innerHTML = '<div class="admin-group-title"><h3>意见反馈</h3><span>用户提交的工单统计</span></div><div class="admin-kpis"><div class="admin-kpi"><span>工单总数</span><strong>' + Number(f.total || 0) + '</strong><em>全部用户反馈</em></div><div class="admin-kpi"><span>待处理</span><strong>' + Number(f.open || 0) + '</strong><em>需要及时跟进</em></div><div class="admin-kpi"><span>处理中</span><strong>' + Number(f.inProgress || 0) + '</strong><em>正在处理的工单</em></div><div class="admin-kpi"><span>Bug 反馈</span><strong>' + Number(f.bugs || 0) + '</strong><em>用户报告的异常</em></div></div>';
+      kpis.appendChild(group);
+    }).catch(function () {});
+  }
+  function setup() {
+    if (!document.getElementById("feedback-admin-style")) { var style = document.createElement("style"); style.id = "feedback-admin-style"; style.textContent = ".feedback-admin-auth{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.feedback-admin-auth input{height:38px;width:210px;border:1px solid #cbd8e7;border-radius:8px;padding:0 10px}.feedback-admin-auth span{font-size:12px;color:#71839c}.feedback-admin-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}.feedback-admin-summary>div{padding:14px;border:1px solid #dce6f0;border-radius:10px;background:#f8fbff}.feedback-admin-summary span{display:block;color:#647996;font-size:12px}.feedback-admin-summary strong{display:block;margin-top:5px;color:#14213d;font-size:25px}.admin-feedback-scroll{overflow:auto;border:1px solid #dce6f0;border-radius:10px}.admin-feedback-table{width:100%;min-width:1000px;border-collapse:collapse;font-size:13px}.admin-feedback-table th,.admin-feedback-table td{padding:12px 10px;border-bottom:1px solid #e7edf4;text-align:left;vertical-align:top}.admin-feedback-table th{color:#647996;background:#f8fbff;white-space:nowrap}.admin-feedback-table code{color:#315b9d}.feedback-admin-chip{display:inline-block;margin-right:7px;padding:3px 7px;border-radius:999px;background:#eaf2ff;color:#315de7;font-size:11px}.feedback-admin-title{display:block;margin-top:8px;color:#14213d}.feedback-admin-description{max-width:390px;margin:6px 0;color:#526983;white-space:pre-wrap;overflow-wrap:anywhere}.admin-feedback-table small{color:#71839c}.admin-feedback-table select{display:block;width:110px;margin-bottom:7px;padding:6px;border:1px solid #cbd8e7;border-radius:7px;background:#fff;color:#304b6b}.admin-feedback-table textarea{display:block;width:220px;min-height:70px;margin-bottom:7px;border:1px solid #cbd8e7;border-radius:7px;padding:7px;resize:vertical;font:inherit;font-size:12px}.feedback-admin-save-status{display:block;margin-top:5px;color:#267252;font-size:12px}@media(max-width:760px){.feedback-admin-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.feedback-admin-auth input{width:180px}}"; document.head.appendChild(style); }
+    var tabs = document.getElementById("adminTabs"), logs = document.getElementById("adminLogsPanel"), base = document.getElementById("adminBasePanel");
+    if (!tabs || !logs || !base) return;
+    if (!tabs.querySelector('[data-admin-tab="feedback"]')) { var button = document.createElement("button"); button.dataset.adminTab = "feedback"; button.textContent = "意见反馈"; tabs.appendChild(button); }
+    var feedback = document.getElementById("adminFeedbackPanel");
+    if (!feedback) { feedback = document.createElement("section"); feedback.id = "adminFeedbackPanel"; feedback.hidden = true; feedback.innerHTML = '<div class="admin-subhead"><div><h2>意见反馈</h2><p>查看全部用户提交的意见和 Bug，并更新处理状态。</p></div><div class="feedback-admin-auth"><span id="feedbackAuthMessage">本机已连接</span></div></div><div id="adminFeedbackBody"><div class="empty">正在读取用户反馈…</div></div>'; logs.insertAdjacentElement("afterend", feedback); }
+    if (!panelReady) { panelReady = true; tabs.addEventListener("click", function (event) { var target = event.target.closest("button"); if (!target) return; tabs.querySelectorAll("button").forEach(function (button) { button.classList.toggle("active", button === target); }); window.setTimeout(function () { syncPanels(); if (target.dataset.adminTab === "feedback") loadFeedback(); }, 0); }); }
+    var kpis = document.getElementById("adminKpis");
+    if (kpis && !kpis.dataset.feedbackObserver) { kpis.dataset.feedbackObserver = "1"; new MutationObserver(function () { window.setTimeout(addFeedbackMetric, 0); }).observe(kpis, { childList: true }); }
+    syncPanels(); addFeedbackMetric();
+  }
+  setup();
+  new MutationObserver(setup).observe(document.body, { childList: true, subtree: true });
+})();
+</script>
+<script>
+/* Render the actual SKILL.md document in the second editor tab. */
+(function () {
+  var activeEditor = null;
+  var panel = null;
+  var safe = function (value) {
+    return String(value == null ? "" : value).replace(/[&<>\"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" }[c];
+    });
+  };
+  var valueOf = function (editor, id) {
+    return editor.querySelector("#" + id)?.value?.trim() || "";
+  };
+  var currentSkill = function () {
+    var selected = typeof state !== "undefined" ? state.selected : "";
+    var rows = typeof state !== "undefined" && state.data && Array.isArray(state.data.skills) ? state.data.skills : [];
+    return rows.find(function (item) { return item.id === selected; }) || rows[0] || null;
+  };
+  var markdown = function (editor) {
+    var skill = currentSkill() || {};
+    var useWhen = valueOf(editor, "skillUse").split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
+    var notFor = valueOf(editor, "skillNot").split("\n").map(function (x) { return x.trim(); }).filter(Boolean);
+    var prompt = valueOf(editor, "skillPrompt");
+    var lines = [
+      "# " + (valueOf(editor, "skillName") || skill.name || "Skill"),
+      "",
+      valueOf(editor, "skillDescription") || skill.description || "",
+      "",
+      "## When to use",
+      useWhen.length ? useWhen.map(function (x) { return "- " + x; }).join("\n") : "- 未配置",
+      "",
+      "## When not to use",
+      notFor.length ? notFor.map(function (x) { return "- " + x; }).join("\n") : "- 未配置",
+      "",
+      "## Required inputs",
+      Array.isArray(skill.requiredInputs) && skill.requiredInputs.length ? skill.requiredInputs.map(function (x) { return "- " + x; }).join("\n") : "- 未配置",
+      "",
+      "## Output contract",
+      skill.outputContract || "未配置",
+      "",
+      "## System Prompt",
+      "```text",
+      prompt || "未配置",
+      "```",
+      "",
+      "<!-- id: " + (skill.id || "") + " | version: " + (skill.version || 1) + " -->"
+    ];
+    return lines.join("\n");
+  };
+  var mount = function (editor) {
+    var tabs = editor.querySelector("[data-editor-tabs]");
+    if (!tabs) return null;
+    if (activeEditor === editor && panel && panel.isConnected) return panel;
+    activeEditor = editor;
+    panel = document.createElement("section");
+    panel.className = "skill-markdown-panel";
+    panel.style.cssText = "display:none;border:1px solid #d7e1ec;border-radius:12px;padding:16px;background:#f8fbff;margin-bottom:16px";
+    panel.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px"><strong>SKILL.md</strong><span style="color:#6d829d;font-size:13px">当前 Skill 的完整 Markdown 预览</span></div><textarea readonly rows="22" data-skill-markdown style="width:100%;box-sizing:border-box;border:1px solid #cbd8e7;border-radius:8px;padding:12px;background:#fff;color:#304b6b;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.55;resize:vertical"></textarea><div data-skill-prompt-host style="margin-top:14px"></div>';
+    var promptField = editor.querySelector("#skillPrompt")?.closest(".field");
+    if (promptField) panel.querySelector("[data-skill-prompt-host]").appendChild(promptField);
+    tabs.insertAdjacentElement("afterend", panel);
+    panel.querySelector("[data-skill-markdown]").value = markdown(editor);
+    var buttons = tabs.querySelectorAll("button");
+    if (buttons[1]) {
+      buttons[1].textContent = "SKILL.md";
+      buttons[1].onclick = function () {
+        buttons.forEach(function (button, index) { button.classList.toggle("active", index === 1); });
+        editor.querySelectorAll(".field").forEach(function (field) { field.style.display = "none"; });
+        var actions = editor.querySelector(".editor-actions");
+        if (actions) actions.style.display = "flex";
+        var versions = editor.querySelector("#versionPanel");
+        if (versions) versions.style.display = "none";
+        if (promptField) promptField.style.display = "block";
+        panel.querySelector("[data-skill-markdown]").value = markdown(editor);
+        panel.style.display = "block";
+      };
+    }
+    buttons.forEach(function (button, index) {
+      if (index === 1) return;
+      button.addEventListener("click", function () {
+        window.setTimeout(function () {
+          panel.style.display = "none";
+          if (index === 0) panel.querySelector("[data-skill-markdown]").value = markdown(editor);
+        }, 0);
+      });
+    });
+    editor.querySelectorAll("#skillName,#skillDescription,#skillUse,#skillNot,#skillPrompt").forEach(function (field) {
+      field.addEventListener("input", function () {
+        panel.querySelector("[data-skill-markdown]").value = markdown(editor);
+      });
+    });
+    return panel;
+  };
+  var observe = function () {
+    var editor = document.querySelector("#view .editor");
+    if (editor) mount(editor);
+  };
+  new MutationObserver(observe).observe(document.body, { childList: true, subtree: true });
+  observe();
+})();
+</script>

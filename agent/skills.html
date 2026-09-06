@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Skill 管理</title>
+<style>
+:root{font:14px/1.6 Arial,"Microsoft YaHei",sans-serif;color:#17233a;background:#f5f8fc}
+body{margin:0;padding:24px}
+main{max-width:1180px;margin:0 auto;background:#fff;padding:28px 32px;border-radius:18px;box-shadow:0 8px 28px rgba(45,75,120,.08)}
+h1{margin:0 0 6px;font-size:26px} .intro{color:#61708a;margin:0 0 20px}
+.skill{border:1px solid #dfe7f2;border-radius:14px;padding:18px;margin:16px 0}
+.skill.audit{border-left:4px solid #4778ee}
+.skill h2{margin:0 0 12px;font-size:19px}.skill h2 small{font-size:12px;color:#7d8aa0;font-weight:400;margin-left:8px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+label{display:block;color:#52627a;font-weight:600} input,textarea{width:100%;box-sizing:border-box;padding:9px;border:1px solid #d7e1ef;border-radius:8px;margin:4px 0 10px;font:inherit;color:#17233a} textarea{min-height:86px}
+.info{background:#f6f8fb;border-radius:10px;padding:10px 12px;margin:4px 0 12px;color:#53637b}.info b{color:#253653}
+ul{margin:6px 0 0;padding-left:20px} li{margin:2px 0}
+button{background:#4778ee;color:white;border:0;border-radius:8px;padding:9px 15px;margin-right:8px;cursor:pointer} button.secondary{background:#eaf0ff;color:#315bc7}
+pre{white-space:pre-wrap;background:#f6f8fb;padding:10px;border-radius:8px;min-height:20px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main>
+<h1>Skill 管理</h1>
+<p class="intro">Planner/审核 Agent 只能调用已启用的 Skill；保存后下一次执行立即生效。每个 Skill 明确适用场景与边界，减少误调用。</p>
+<div id="x">加载中…</div>
+</main>
+<script>
+const esc=v=>String(v??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;');
+const list=v=>Array.isArray(v)?'<ul>'+v.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'<span>'+esc(v)+'</span>';
+async function load(){
+  const a=await (await fetch('/api/agent/skills')).json();
+  x.innerHTML=a.map((s,i)=>'<section class="skill '+(s.id.startsWith('audit_')?'audit':'')+'">'+
+    '<h2>'+esc(s.name)+' <small>'+esc(s.id)+' · '+esc(s.model)+'</small></h2>'+
+    '<div class="info"><b>描述：</b>'+esc(s.description)+'</div>'+
+    '<div class="grid"><div class="info"><b>适用场景</b>'+list(s.useWhen)+'</div><div class="info"><b>不适用场景</b>'+list(s.notFor)+'</div></div>'+
+    '<div class="grid"><div class="info"><b>必需输入：</b>'+esc((s.requiredInputs||[]).join('、')||'未声明')+'</div><div class="info"><b>输出契约：</b>'+esc(s.outputContract||'未声明')+'</div></div>'+
+    '<label>名称<input id="n'+i+'" value="'+esc(s.name)+'"></label>'+
+    '<label>模型<input id="m'+i+'" value="'+esc(s.model)+'"></label>'+
+    '<label>描述<input id="d'+i+'" value="'+esc(s.description)+'"></label>'+
+    '<label>Prompt<textarea id="p'+i+'">'+esc(s.prompt)+'</textarea></label>'+
+    '<label><input type="checkbox" id="z'+i+'" '+(s.enabled?'checked':'')+'> 启用</label>'+
+    '<p><button onclick="save('+i+',\''+esc(s.id)+'\')">保存</button><button class="secondary" onclick="test('+i+',\''+esc(s.id)+'\')">测试</button></p>'+
+    '<pre id="o'+i+'"></pre></section>').join('');
+}
+async function save(i,id){await fetch('/api/agent/skills/'+id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name:document.getElementById('n'+i).value,model:document.getElementById('m'+i).value,description:document.getElementById('d'+i).value,prompt:document.getElementById('p'+i).value,enabled:document.getElementById('z'+i).checked})});alert('已保存');load()}
+async function test(i,id){const o=await (await fetch('/api/agent/skills/'+id+'/test',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({prompt:'返回最小 JSON，并说明是否实际调用模型'})})).json();document.getElementById('o'+i).textContent=JSON.stringify(o,null,2)}
+load()
+</script>
+</body>
+</html>

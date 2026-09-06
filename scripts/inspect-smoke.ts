@@ -1,0 +1,5 @@
+import { createClient } from "@supabase/supabase-js";
+const c=createClient(process.env.SUPABASE_URL!,process.env.SUPABASE_SERVICE_ROLE_KEY!,{auth:{persistSession:false}});
+const projectId="19792492-5cbe-4c6a-835a-62d193805a60"; const taskId="6e8d6284-1e7e-43a5-918c-bff0046d0517";
+const [p,t,l]=await Promise.all([c.from("projects").select("id,name").eq("id",projectId).maybeSingle(),c.from("search_tasks").select("status,terminal,collected_count,persisted_count,error_code,error_message,partial_reason").eq("id",taskId).maybeSingle(),c.from("project_creators").select("id,followers,match_score,evidence_summary,creators(nickname,platform_creator_id)").eq("project_id",projectId)]);
+console.log(JSON.stringify({project:p.data,task:t.data,links:l.data,errors:[p.error?.message,t.error?.message,l.error?.message]},null,2));

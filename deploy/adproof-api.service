@@ -1,0 +1,29 @@
+[Unit]
+Description=AdProof API
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=adproof
+Group=adproof
+WorkingDirectory=/opt/adproof/current
+EnvironmentFile=/etc/adproof/runtime.conf
+Environment=NODE_ENV=production
+Environment=ADPROOF_ANALYTICS_DIR=/var/lib/adproof/api-analytics
+ExecStartPre=/usr/bin/node scripts/check-release.mjs
+ExecStart=/usr/bin/node dist-server/server/src/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=45
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/adproof
+
+[Install]
+WantedBy=multi-user.target

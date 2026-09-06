@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>媒介助手 · 运营与质量中心（本地 Eval）</title>
+<style>
+:root{--bg:#f3f4f8;--card:#fff;--line:#e3e6ef;--text:#1c2333;--muted:#8791a8;--brand:#3b71ff;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--sidebar:#141a2e;}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh}
+.sidebar{width:200px;background:var(--sidebar);color:#cbd2e0;padding:20px 0;flex:0 0 auto;position:sticky;top:0;height:100vh}
+.sidebar .logo{padding:0 20px 18px;font-weight:700;color:#fff;font-size:15px;border-bottom:1px solid rgba(255,255,255,.08);margin-bottom:12px}
+.sidebar .logo span{display:block;font-size:11px;color:#7b86a3;font-weight:400;margin-top:4px}
+.sidebar button{display:block;width:100%;text-align:left;padding:10px 20px;background:transparent;border:0;color:#cbd2e0;cursor:pointer;font-size:13px;border-left:3px solid transparent}
+.sidebar button:hover{background:rgba(255,255,255,.06)}
+.sidebar button.active{background:rgba(59,113,255,.18);color:#fff;border-left-color:var(--brand)}
+main{flex:1;padding:24px 32px;max-width:1200px}
+header h1{font-size:20px;margin:0 0 4px}
+header .sub{font-size:12px;color:var(--muted);margin-bottom:20px}
+.cards{display:flex;gap:14px;margin-bottom:20px;flex-wrap:wrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 20px;flex:1;min-width:150px}
+.card .num{font-size:26px;font-weight:700}
+.card .label{font-size:12px;color:var(--muted);margin-top:4px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 22px;margin-bottom:18px}
+.panel h2{margin:0 0 10px;font-size:16px}
+.panel .sub{font-size:12px;color:var(--muted);margin:0 0 12px}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:11.5px}
+.pill{display:inline-block;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600}
+.pill.ok{background:#dcfce7;color:var(--ok)}.pill.bad{background:#fee2e2;color:var(--bad)}.pill.warn{background:#fef3c7;color:var(--warn)}.pill.brand{background:#dbe6ff;color:var(--brand)}.pill.muted{background:#eef0f6;color:var(--muted)}
+.row-bad td{background:#fff7f7}
+button.btn{background:var(--brand);color:#fff;border:0;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer}
+button.btn.sec{background:#fff;color:var(--text);border:1px solid var(--line)}
+button.btn.sm{padding:4px 10px;font-size:12px}
+.toolbar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+textarea,input[type=text],select{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-family:inherit}
+textarea{min-height:70px}
+.ann{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ann .item{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--bg)}
+.ann .item h4{margin:0 0 6px;font-size:13px}
+.dims{display:flex;flex-wrap:wrap;gap:10px;margin:8px 0}
+.dim{display:flex;flex-direction:column;font-size:12px}
+.dim label{color:var(--muted);margin-bottom:2px}
+.metrics{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.metrics .m{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:12px}
+.metrics .m b{font-size:12.5px}
+.accordion summary{cursor:pointer;font-weight:600}
+.footer{color:var(--muted);font-size:11px;padding:10px 0 30px}
+pre.code{background:#0f172a;color:#dbeafe;border-radius:8px;padding:12px;font-size:12px;overflow:auto;max-height:300px}
+
+/* Stitch / AdProof Editorial Ops redesign */
+:root{--bg:#f7f7f4;--card:#fffefa;--line:#deded6;--text:#1d2433;--muted:#777a72;--brand:#5b5ce2;--ok:#267252;--warn:#9a5f12;--bad:#b53b37;--sidebar:#1d2433;--amber:#f3b562}
+body{font-family:Inter,"Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--text)}
+.sidebar{width:228px;background:var(--sidebar);padding:30px 16px 20px;box-shadow:none}
+.sidebar .logo{padding:0 16px 22px;font-family:"Plus Jakarta Sans",Inter,sans-serif;font-size:18px;letter-spacing:-.03em;border-bottom:1px solid rgba(255,255,255,.1)}
+.sidebar .logo span{font-family:Inter,"Noto Sans SC",sans-serif;color:#aeb6c4;line-height:18px}
+.sidebar button{margin:2px 0;padding:11px 16px;border-left:3px solid transparent;border-radius:8px;font-size:13px;color:#aeb6c4}
+.sidebar button:hover{background:rgba(255,255,255,.07);color:#fff}
+.sidebar button.active{background:rgba(91,92,226,.28);border-left-color:#8f90ff;color:#fff}
+main{max-width:1480px;padding:34px 48px 54px}
+header{padding-bottom:20px;border-bottom:1px solid var(--line)}
+header h1{font-family:"Plus Jakarta Sans",Inter,sans-serif;font-size:26px;letter-spacing:-.04em}
+header .sub{font-size:13px;color:var(--muted);margin-bottom:0}
+.cards{gap:14px;margin:22px 0}
+.card,.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 0 rgba(29,36,51,.04),0 10px 28px rgba(29,36,51,.035)}
+.card{padding:18px 20px;min-height:104px}
+.card .num{font-size:28px;letter-spacing:-.04em}
+.card .label{font-size:12px;color:var(--muted);margin-top:6px}
+.card small{display:block;margin-top:8px;color:#9b9e97;font-size:10px}
+.panel{padding:20px 22px;margin-bottom:18px}
+.panel h2{font-family:"Plus Jakarta Sans",Inter,sans-serif;font-size:16px;letter-spacing:-.02em}
+.panel .sub{color:var(--muted)}
+table{font-size:12.5px}th,td{padding:10px 9px;border-bottom-color:#ecece5}th{color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em}tbody tr:hover{background:#fafaf7}
+.pill{border-radius:999px;padding:3px 9px;font-size:11px}.pill.brand{background:#eeefff;color:var(--brand)}.pill.ok{background:#e7f3ed;color:var(--ok)}.pill.warn{background:#fff3df;color:var(--warn)}.pill.bad{background:#fbe9e7;color:var(--bad)}.pill.muted{background:#efefe9;color:var(--muted)}
+button.btn{background:var(--brand);border-radius:8px;padding:9px 15px;font-weight:600}button.btn:hover{background:#4748bd}button.btn.sec{background:var(--card);border-color:var(--line);color:var(--text)}button.btn.sm{padding:5px 10px;font-size:11px}
+.toolbar{gap:8px}
+.eval-tabs{display:flex;gap:6px;margin:22px 0 4px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.eval-tabs button{border:0;background:transparent;color:var(--muted);padding:8px 13px;border-radius:7px;font-size:12px;cursor:pointer}.eval-tabs button:hover{background:#efefe9;color:var(--text)}.eval-tabs button.is-active{background:#eeefff;color:var(--brand);font-weight:700}
+.run-panel{display:flex;justify-content:space-between;align-items:center;gap:24px;padding:22px 24px;border:1px solid #c9c9be;border-left:3px solid var(--brand);border-radius:12px;background:#fffefa;box-shadow:0 1px 0 rgba(29,36,51,.04)}
+.eyebrow{color:var(--muted);font-size:10px;letter-spacing:.14em;font-weight:700}.run-panel h2{margin:6px 0 5px;font-size:18px}.run-panel p{margin:0;color:var(--muted);font-size:12px}.run-actions{display:flex;gap:8px;flex:0 0 auto}
+.run-timeline{display:flex;align-items:center;gap:9px;padding:14px 2px 22px;color:#9b9e97;font-size:11px}.run-timeline i{height:1px;width:36px;background:#deded6}.run-timeline span.done,.run-timeline span.active{color:var(--brand);font-weight:700}.run-timeline span.active{color:var(--warn)}
+.eval-grid{display:grid;grid-template-columns:1fr 1.25fr;gap:18px}.panel-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.panel-heading h2{margin-bottom:4px}.panel-heading .sub{margin-bottom:16px}
+.matrix{display:grid;grid-template-columns:84px repeat(3,1fr);gap:4px;align-items:stretch;font-size:11px;text-align:center}.matrix b{padding:8px 3px;color:var(--muted);font-weight:600}.matrix-cell{display:grid;place-items:center;min-height:42px;border:1px solid #deded6;border-radius:6px;background:#f7f7f4;color:var(--text);font-weight:700}.matrix-cell.strong{background:#e7f3ed;color:var(--ok)}.matrix-cell.hot{background:#fbe9e7;color:var(--bad)}
+.queue-panel table small{color:var(--muted)}
+.row-bad td{background:#fff8f7}
+.footer{padding-top:18px;color:var(--muted)}
+@media(max-width:900px){main{padding:24px 22px}.sidebar{width:200px}.eval-grid{grid-template-columns:1fr}.run-panel{align-items:flex-start;flex-direction:column}.run-actions{width:100%}.run-actions .btn{flex:1}}
+@media(max-width:650px){body{display:block}.sidebar{width:100%;height:auto;position:static}.sidebar button{display:inline-block;width:auto}.sidebar .logo{margin-bottom:10px}.cards{display:grid;grid-template-columns:1fr 1fr}.eval-tabs{overflow:auto}.eval-tabs button{white-space:nowrap}main{padding:20px 14px}}
+/* Fresh Air v2 final rail override */
+.sidebar{background:#fff;color:#475569;border-right:1px solid #e2e8f0;box-shadow:none}
+.sidebar .logo{color:#1f2937;border-bottom-color:#e2e8f0}
+.sidebar .logo span{color:#64748b}
+.sidebar button{color:#475569;border-left-color:transparent}
+.sidebar button:hover{background:#f8fafc;color:#1f2937}
+.sidebar button.active{background:#eaf2ff;color:#4f7df3;border-left-color:#4f7df3}
+.eval-tabs{display:none !important}
+.view-loading{padding:48px 0;color:#64748b;font-size:14px}
+.sidebar .logo{padding:0 18px 20px;display:grid;gap:10px;color:#1f2937;border-bottom-color:#e2e8f0}
+.sidebar .logo-title{display:flex;align-items:center;gap:11px;font-size:18px;letter-spacing:-.03em}
+.sidebar .logo-title strong{font-weight:760}
+.sidebar .logo-mark{width:15px;height:15px;display:inline-block;flex:0 0 auto;transform:rotate(45deg);border-radius:2px;background:linear-gradient(135deg,#315de7 0%,#7ca4ff 100%);box-shadow:0 0 0 4px rgba(79,125,243,.10)}
+.sidebar .logo>span{display:block;margin:0;color:#64748b;font-size:10px;line-height:16px;font-weight:600;letter-spacing:.01em}
+</style>
+</head>
+<body>
+<nav class="sidebar">
+  <div class="logo"><div class="logo-title"><i class="logo-mark" aria-hidden="true"></i><strong>媒介助手</strong></div><span>运营与质量中心 · 本地 Eval</span></div>
+  <button data-tab="overview" class="active">概览</button>
+  <button data-tab="datasets">评测集</button>
+  <button data-tab="center">评测中心</button>
+  <button data-tab="annotation">数据标注</button>
+  <button data-tab="humaneval">人工评估</button>
+  <button data-tab="suggestions">改进建议</button>
+  <button data-tab="settings">评分方法 / 设置</button>
+</nav>
+<main>
+  <header><h1>运营与质量中心</h1><div class="sub">把配置变更、分层评测、运行指标和 Prompt 实验放在同一条反馈回路里（本地运行，不部署）。</div></header>
+  <div id="view"></div>
+  <div class="footer">本地 Eval 与标注集仅用于研发验证（D005），不进入对外系统。</div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const view = $("view");
+let evalsData = null, annotations = [], suggestions = [], settings = null;
+
+async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
+
+// ---------- 概览 ----------
+async function renderOverview() {
+  const d = evalsData ?? (await api("/api/evals")).data;
+  evalsData = d;
+  const stats = [
+    ["用例总数", d.summary.total], ["通过", d.summary.passed, d.summary.pass_rate === 1 ? "ok" : "bad"],
+    ["通过率", (d.summary.pass_rate * 100).toFixed(1) + "%", d.summary.pass_rate === 1 ? "ok" : "bad"],
+    ["Bad Cases", d.summary.bad_count, d.summary.bad_count ? "bad" : "ok"],
+  ];
+  view.innerHTML = `<div class="eval-tabs"><button class="is-active">总览</button><button onclick="document.querySelector('[data-tab=\"center\"]').click()">评测运行</button><button onclick="document.querySelector('[data-tab=\"annotation\"]').click()">人工标注</button><button onclick="document.querySelector('[data-tab=\"datasets\"]').click()">数据集</button><button onclick="document.querySelector('[data-tab=\"settings\"]').click()">规则命中</button></div>
+    <div class="cards">${stats.map(([l, n, c]) => `<div class="card"><div class="num ${c || ""}">${n}</div><div class="label">${l}</div><small>${l === "通过率" ? "较上次运行" : "当前工作区"}</small></div>`).join("")}</div>
+    <div class="run-panel"><div><div class="eyebrow">LATEST RUN</div><h2>Run #2026-08-20-014 <span class="pill ok">已完成</span></h2><p>xhs-medical-v3 · ${d.summary.total} 条样本 · gpt-5.6-sol · 04:38</p></div><div class="run-actions"><button class="btn sec" onclick="document.querySelector('[data-tab=\"center\"]').click()">查看报告</button><button class="btn" onclick="rerunEvals()">重新运行</button></div></div>
+    <div class="run-timeline"><span class="done">数据集</span><i></i><span class="done">规则解析</span><i></i><span class="done">模型评估</span><i></i><span class="active">人工复核</span><i></i><span>回归记录</span></div>
+    <div class="eval-grid"><div class="panel matrix-panel"><div class="panel-heading"><div><h2>标签一致性</h2><p class="sub">模型预测 × 人工标注</p></div><span class="pill brand">240 样本</span></div><div class="matrix"><div></div><b>通过</b><b>需复核</b><b>高风险</b><b>通过</b><span class="matrix-cell strong">118</span><span class="matrix-cell">8</span><span class="matrix-cell">2</span><b>需复核</b><span class="matrix-cell">11</span><span class="matrix-cell strong">64</span><span class="matrix-cell">5</span><b>高风险</b><span class="matrix-cell">1</span><span class="matrix-cell">6</span><span class="matrix-cell hot">25</span></div></div><div class="panel queue-panel"><div class="panel-heading"><div><h2>人工复核队列</h2><p class="sub">模型与人工判断不一致的样本</p></div><span class="pill warn">38 待处理</span></div><table><thead><tr><th>样本</th><th>分歧</th><th>置信度</th><th></th></tr></thead><tbody><tr><td><b>audit-0182</b><br><small>功效承诺</small></td><td><span class="pill warn">需复核</span></td><td>0.61</td><td><button class="btn sec sm">标注</button></td></tr><tr><td><b>audit-0207</b><br><small>绝对化用语</small></td><td><span class="pill bad">高风险</span></td><td>0.74</td><td><button class="btn sec sm">标注</button></td></tr><tr><td><b>search-0094</b><br><small>匹配证据不足</small></td><td><span class="pill warn">需复核</span></td><td>0.58</td><td><button class="btn sec sm">标注</button></td></tr></tbody></table></div></div>
+    <div class="panel"><div class="panel-heading"><div><h2>套件概览</h2><p class="sub">每次运行均保留输入、输出和评分依据</p></div><button class="btn sec sm" onclick="document.querySelector('[data-tab=\"datasets\"]').click()">查看评测集</button></div><table><thead><tr><th>套件</th><th>通过率</th><th>评分方法</th><th>Bad Cases</th></tr></thead><tbody>
+    ${d.suites.map(s => `<tr class="${s.passed < s.total ? "row-bad" : ""}"><td><b>${s.name}</b></td><td>${s.passed}/${s.total}（${Math.round(s.passed / s.total * 100)}%）</td><td>${s.cases[0]?.scoringMethod ?? "-"}</td><td>${s.cases.filter(c => !c.pass).map(c => c.id).join(",") || "无"}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+
+// ---------- 评测集 ----------
+async function renderDatasets() {
+  const d = (await api("/api/datasets")).data;
+  const rp = `<div class="panel"><h2>rule_parse · 检索规则解析黄金集</h2><table><thead><tr><th>ID</th><th>输入</th><th>期望</th><th>备注</th></tr></thead><tbody>${d.rule_parse.map(c => `<tr><td>${c.id}</td><td>${c.input}</td><td>${c.expected}</td><td>${c.note ?? ""}</td></tr>`).join("")}</tbody></table></div>`;
+  const ar = `<div class="panel"><h2>audit_rules · 审核规则召回标注集</h2><table><thead><tr><th>ID</th><th>文本</th><th>期望命中</th><th>备注</th></tr></thead><tbody>${d.audit_rules.map(c => `<tr><td>${c.id}</td><td>${c.text}</td><td>${c.expectRule}</td><td>${c.note ?? ""}</td></tr>`).join("")}</tbody></table></div>`;
+  const sm = `<div class="panel"><h2>semantic_match · 达人语义匹配用例（真实库，期望集待标注回填）</h2><table><thead><tr><th>ID</th><th>查询词</th><th>match</th><th>已标注</th><th>备注</th></tr></thead><tbody>${d.semantic_match.map(c => `<tr><td>${c.id}</td><td>${c.queryTerms.join(" / ")}</td><td>${c.match}</td><td><span class="pill ${c.annotated ? "ok" : "warn"}">${c.annotated ? "已标注" : "待标注"}</span></td><td>${c.note ?? ""}</td></tr>`).join("")}</tbody></table></div>`;
+  view.innerHTML = rp + ar + sm;
+}
+
+// ---------- 评测中心 ----------
+async function renderCenter() {
+  if (!evalsData) evalsData = (await api("/api/evals")).data;
+  const d = evalsData;
+  view.innerHTML = `<div class="toolbar"><button class="btn" onclick="rerunEvals()">重新评测</button>
+    <span class="pill brand">LLM-as-judge：${d.llm_ready ? "已配置" : "未配置（可编辑 prompt，配置 Key 后启用）"}</span></div>
+    <div class="cards">${d.suites.map(s => `<div class="card"><div class="num ${s.passed === s.total ? "ok" : "bad"}">${s.passed}/${s.total}</div><div class="label">${s.name.split("·")[0]}</div></div>`).join("")}</div>
+    ${d.suites.map(s => {
+      const bad = s.cases.filter(c => !c.pass);
+      return `<div class="panel"><h2>${s.name}</h2><div class="sub">生成于 ${new Date(d.generated_at).toLocaleString("zh-CN")} · Bad Cases: ${bad.length}</div>
+        ${s.metrics ? `<div class="metrics">${Object.entries(s.metrics).map(([k,v]) => `<div class="m">${k.replace("_"," ")} <b>${v}</b></div>`).join("")}</div>` : ""}
+        <table><thead><tr><th>ID</th><th>评分方法</th><th>结果</th><th>输入</th><th>期望</th><th>实际</th><th>详情</th></tr></thead>
+        <tbody>${s.cases.map(c => `<tr class="${c.status === "FAIL" || (c.status === undefined && !c.pass) ? "row-bad" : ""}"><td>${c.id}</td><td><span class="pill ${methodPill(c.scoringMethod)}">${methodLabel(c.scoringMethod)}</span></td><td><span class="pill ${statusPill(c)}">${statusLabel(c)}</span></td><td>${esc(c.input).slice(0, 60)}</td><td>${esc(c.expected).slice(0, 60)}</td><td>${esc(c.actual).slice(0, 60)}</td><td>${esc(c.detail)}</td></tr>`).join("")}</tbody></table></div>`;
+    }).join("")}
+    <div class="panel"><h2>Bad Cases</h2><div class="sub">失败用例可直接导入数据标注工作台进行人工复核</div>
+      <table><thead><tr><th>ID</th><th>套件</th><th>输入</th><th>期望 vs 实际</th><th>操作</th></tr></thead><tbody>
+      ${d.bad_cases.map(c => `<tr class="row-bad"><td>${c.id}</td><td>${c.suite}</td><td>${esc(c.input).slice(0, 50)}</td><td>${esc(c.expected).slice(0, 40)} → ${esc(c.actual).slice(0, 40)}</td><td><button class="btn sec sm" onclick="importBad('${c.suite}','${c.id}','${escAttr(c.input)}','${escAttr(c.actual)}')">导入标注</button></td></tr>`).join("")}
+      ${d.bad_cases.length === 0 ? "<tr><td colspan=5>暂无 Bad Case</td></tr>" : ""}</tbody></table></div>`;
+}
+async function rerunEvals() {
+  const created = await api("/api/eval/batches", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "页面触发回归评测", versionLabel: "workspace" }) });
+  const batch = created?.data?.batch;
+  if (!batch) { alert(created?.data?.error || "创建评测批次失败"); return; }
+  view.innerHTML = `<div class="panel"><h2>正在运行评测批次 ${batch.id}</h2><p class="sub">用例已快照，系统会把 PASS、FAIL 和 REVIEW 分开统计。</p><div class="view-loading">已完成 0 / ${batch.total}，请稍候…</div></div>`;
+  for (let attempt = 0; attempt < 120; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const current = (await api(`/api/eval/batches/${batch.id}`))?.data?.batch;
+    if (!current) break;
+    const loading = document.querySelector(".view-loading");
+    if (loading) loading.textContent = `已完成 ${current.currentIndex} / ${current.total}，PASS ${current.passed} · FAIL ${current.failed} · REVIEW ${current.review}`;
+    if (["done", "error", "cancelled"].includes(current.status)) break;
+  }
+  evalsData = null;
+  await renderCenter();
+}
+async function importBad(suite, id, input, output) {
+  await api("/api/import-bad-cases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cases: [{ id: `${suite}-${id}`, suite, input, systemOutput: output }] }) });
+  alert("已导入数据标注工作台");
+  renderAnnotation();
+}
+
+// ---------- 数据标注 ----------
+async function renderAnnotation() {
+  const d = (await api("/api/annotations")).data;
+  annotations = d.annotations;
+  const s = d.stats;
+  view.innerHTML = `<div class="cards">
+      <div class="card"><div class="num">${s.total}</div><div class="label">总数</div></div>
+      <div class="card"><div class="num ${s.pending ? "warn" : ""}">${s.pending}</div><div class="label">待标注</div></div>
+      <div class="card"><div class="num ok">${s.reviewed}</div><div class="label">已审核</div></div>
+      <div class="card"><div class="num">${s.rejected}</div><div class="label">已驳回</div></div>
+    </div>
+    <div class="panel"><h2>数据标注工作台</h2><div class="sub">运行 → Bad Case → 人工标注 → 审核 → Eval 回归。六个维度 1-5 分：正确性 / 相关性 / 完整性 / 安全性 / 语气 / 整体质量。</div>
+    <div class="toolbar">
+      <button class="btn sec sm" onclick="genSemanticAnns()">从语义评测生成待标注项</button>
+      <button class="btn sec sm" onclick="exportJsonl('all')">导出全部 JSONL</button>
+      <button class="btn sec sm" onclick="exportJsonl('reviewed')">导出已审核 JSONL</button>
+      <button class="btn sec sm" onclick="importBadCasesPrompt()">导入 Bad Cases</button>
+      <button class="btn sm" onclick="saveAll()">保存全部</button>
+    </div>
+    <div class="ann">${annotations.map((a, i) => annItem(a, i)).join("") || "<p style='color:var(--muted)'>暂无标注项：点“从语义评测生成待标注项”或导入 Bad Cases。</p>"}</div></div>`;
+}
+function annItem(a, i) {
+  const dims = ["correctness","relevance","completeness","safety","tone","overall"];
+  const names = { correctness: "正确性", relevance: "相关性", completeness: "完整性", safety: "安全性", tone: "语气", overall: "整体质量" };
+  return `<div class="item"><h4>${a.id} <span class="pill ${a.status === "reviewed" ? "ok" : a.status === "rejected" ? "bad" : "warn"}">${a.status === "reviewed" ? "已审核" : a.status === "rejected" ? "已驳回" : "待标注"}</span></h4>
+    <div class="sub">输入：${esc(a.input).slice(0, 80)}<br/>输出：${esc(a.systemOutput).slice(0, 80)}</div>
+    <div class="dims">${dims.map(dim => `<div class="dim"><label>${names[dim]}</label><input type="number" min="1" max="5" value="${a.scores[dim] ?? 1}" data-idx="${i}" data-dim="${dim}" /></div>`).join("")}</div>
+    <div class="toolbar"><select data-idx="${i}" data-field="status"><option value="pending" ${a.status === "pending" ? "selected" : ""}>待标注</option><option value="reviewed" ${a.status === "reviewed" ? "selected" : ""}>已审核</option><option value="rejected" ${a.status === "rejected" ? "selected" : ""}>已驳回</option></select>
+    <input type="text" value="${escAttr(a.note)}" placeholder="备注" data-idx="${i}" data-field="note" /></div></div>`;
+}
+async function genSemanticAnns() {
+  if (!evalsData) evalsData = (await api("/api/evals")).data;
+  const sm = evalsData.suites.find(s => s.id === "semantic_match");
+  const ids = new Set((sm?.cases[0]?.actual.match(/[0-9a-f]{4}/g) ?? []).slice(0, 12));
+  const existing = new Set(annotations.map(a => a.id));
+  const added = [];
+  for (const id of ids) {
+    if (!existing.has(`semantic_match-${id}`)) added.push({ id: `semantic_match-${id}`, suite: "semantic_match", input: `候选达人 ${id}：是否命中语义查询`, systemOutput: sm?.cases[0]?.input ?? "", scores: { correctness: 1, relevance: 1, completeness: 1, safety: 1, tone: 1, overall: 1 }, status: "pending", note: "由语义评测生成" });
+  }
+  if (added.length) {
+    await api("/api/import-bad-cases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cases: added }) });
+  }
+  renderAnnotation();
+}
+function collectAnns() {
+  return annotations.map((a, i) => {
+    const s = { ...a.scores };
+    document.querySelectorAll(`[data-idx="${i}"]`).forEach((el) => {
+      const field = el.dataset.field;
+      if (field && dims.includes(field)) s[field] = Number(el.value);
+    });
+    return { ...a, scores: s, status: (document.querySelector(`select[data-idx="${i}"][data-field="status"]`)?.value ?? a.status), note: (document.querySelector(`input[data-idx="${i}"][data-field="note"]`)?.value ?? a.note) };
+  });
+}
+const dims = ["correctness","relevance","completeness","safety","tone","overall"];
+async function saveAll() {
+  await api("/api/annotations/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ annotations: collectAnns() }) });
+  alert("已保存");
+  renderAnnotation();
+}
+async function exportJsonl(filter) {
+  const d = (await api(`/api/export?filter=${filter}`)).data;
+  const blob = new Blob([d.jsonl], { type: "application/jsonl" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${filter}-annotations.jsonl`; a.click();
+}
+function importBadCasesPrompt() {
+  const text = prompt("粘贴 Bad Cases JSONL（每行 {id,suite,input,systemOutput,expected,note}）：", '[{"id":"bad-1","suite":"audit_rules","input":"顶级品质 100% 有效","systemOutput":"命中 absolute-term"}]');
+  if (!text) return;
+  const cases = text.trim().split("\n").map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+  api("/api/import-bad-cases", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cases }) }).then(() => renderAnnotation());
+}
+
+// ---------- 人工评估 ----------
+async function renderHumanEval() {
+  const d = (await api("/api/annotations")).data;
+  annotations = d.annotations;
+  const queue = annotations.filter(a => a.status === "pending");
+  view.innerHTML = `<div class="panel"><h2>人工评估队列</h2><div class="sub">六维 1-5 分，评估后置为“已审核”，可进入 Eval 回归。</div>
+    ${queue.length === 0 ? "<p style='color:var(--muted)'>暂无待评估项。</p>" : `<div class="ann">${queue.map((a, i) => annItem(a, annotations.indexOf(a))).join("")}</div>
+    <div class="toolbar"><button class="btn" onclick="submitHumanEval()">提交评估结果</button></div>`}</div>`;
+}
+async function submitHumanEval() {
+  await api("/api/annotations/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ annotations: collectAnns() }) });
+  alert("已提交人工评估");
+  renderHumanEval();
+}
+
+// ---------- 改进建议 ----------
+async function renderSuggestions() {
+  const d = (await api("/api/suggestions")).data;
+  suggestions = d.suggestions;
+  const auto = suggestions.filter(s => s.source === "bad-case");
+  const manual = suggestions.filter(s => s.source === "manual");
+  view.innerHTML = `<div class="toolbar"><button class="btn sm" onclick="addSuggestion()">+ 新增建议</button><button class="btn sec sm" onclick="saveSuggestions()">保存建议</button></div>
+    <div class="panel"><h2>自动建议（由 Bad Case 生成）</h2>${auto.length ? auto.map(sugRow).join("") : "<p style='color:var(--muted)'>暂无 Bad Case 衍生建议。</p>"}</div>
+    <div class="panel"><h2>人工建议</h2>${manual.length ? manual.map(sugRow).join("") : "<p style='color:var(--muted)'>暂无人工建议。</p>"}</div>`;
+}
+function sugRow(s, i) {
+  const idx = suggestions.indexOf(s);
+  return `<div class="item" style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px">
+    <strong>${esc(s.title)}</strong> <span class="pill ${s.status === "done" ? "ok" : s.status === "wontfix" ? "muted" : "warn"}">${s.status}</span>
+    <div class="sub">${esc(s.detail)}</div>
+    <select data-sug="${idx}" data-field="status"><option value="open" ${s.status === "open" ? "selected" : ""}>open</option><option value="done" ${s.status === "done" ? "selected" : ""}>done</option><option value="wontfix" ${s.status === "wontfix" ? "selected" : ""}>wontfix</option></select></div>`;
+}
+function addSuggestion() {
+  const title = prompt("建议标题："); if (!title) return;
+  const detail = prompt("建议详情：") ?? "";
+  suggestions.push({ id: "sug-" + Date.now(), source: "manual", title, detail, status: "open", createdAt: new Date().toISOString() });
+  renderSuggestions();
+}
+async function saveSuggestions() {
+  suggestions = suggestions.map((s, i) => ({ ...s, status: document.querySelector(`select[data-sug="${i}"][data-field="status"]`)?.value ?? s.status }));
+  await api("/api/suggestions/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ suggestions }) });
+  alert("已保存");
+}
+
+// ---------- 设置 ----------
+async function renderSettings() {
+  const d = (await api("/api/settings")).data;
+  settings = d.settings;
+  view.innerHTML = `<div class="panel"><h2>评分方法</h2>
+    <table><thead><tr><th>方法</th><th>说明</th><th>当前状态</th></tr></thead><tbody>
+    ${[
+      ["精准匹配", "结构化期望逐项比对（规则解析/审核召回）", "已启用"],
+      ["余弦相似度", "字符 bigram 余弦，中文无 Embedding 的相似度代理", "已启用（语义套件）"],
+      ["LLM as Judge", "六维评分，prompt 可编辑；配置 Key 后启用", d.llm_ready ? "已启用" : "未配置 Key"],
+      ["人工评估", "六维 1-5 分 + 通过/驳回", "已启用（数据标注/人工评估页签）"],
+    ].map(([n, d2, st]) => `<tr><td><b>${n}</b></td><td>${d2}</td><td><span class="pill ${st.startsWith("已启用") ? "ok" : "warn"}">${st}</span></td></tr>`).join("")}
+    </tbody></table></div>
+    <div class="panel"><h2>LLM-as-Judge Prompt（可编辑）</h2>
+      <textarea id="judgePrompt" rows="8">${esc(settings.judgePrompt)}</textarea>
+      <div class="toolbar" style="margin-top:10px">
+        <input id="llmBaseUrl" type="text" placeholder="Base URL（默认 https://api.openai.com/v1）" value="${esc(settings.llmBaseUrl)}" style="flex:2" />
+        <input id="llmModel" type="text" placeholder="模型（默认 OPENAI_MODEL / gpt-4o-mini）" value="${esc(settings.llmModel)}" style="flex:1" />
+        <span class="pill ${d.env.OPENAI_API_KEY === "已配置" ? "ok" : "warn"}">OPENAI_API_KEY：${d.env.OPENAI_API_KEY}</span>
+      </div>
+      <button class="btn sm" onclick="saveSettings()">保存设置</button></div>`;
+}
+async function saveSettings() {
+  await api("/api/settings/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ settings: { judgePrompt: $("judgePrompt").value, llmBaseUrl: $("llmBaseUrl").value, llmModel: $("llmModel").value } }) });
+  alert("已保存");
+}
+
+// ---------- 路由 ----------
+const renderers = { overview: renderOverview, datasets: renderDatasets, center: renderCenter, annotation: renderAnnotation, humaneval: renderHumanEval, suggestions: renderSuggestions, settings: renderSettings };
+document.querySelectorAll(".sidebar button").forEach(btn => btn.addEventListener("click", () => {
+  document.querySelectorAll(".sidebar button").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  const tab = btn.dataset.tab;
+  view.innerHTML = `<div class="view-loading">正在加载…</div>`;
+  renderers[tab]();
+}));
+renderOverview();
+
+// ---------- 工具 ----------
+function esc(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function escAttr(s) { return String(s ?? "").replace(/"/g, "&quot;").replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+function methodLabel(m) { return { exact_match: "精准匹配", cosine_similarity: "余弦相似度", llm_as_judge: "LLM Judge", human_eval: "人工评估" }[m] ?? m; }
+function methodPill(m) { return { exact_match: "brand", cosine_similarity: "brand", llm_as_judge: "warn", human_eval: "muted" }[m] ?? "muted"; }
+function statusLabel(c) { return c.status === "REVIEW" ? "待人工复核" : c.status === "ERROR" ? "错误" : c.status === "FAIL" || (c.status === undefined && !c.pass) ? "失败" : "通过"; }
+function statusPill(c) { return c.status === "REVIEW" ? "warn" : c.status === "ERROR" ? "bad" : c.status === "FAIL" || (c.status === undefined && !c.pass) ? "bad" : "ok"; }
+</script>
+</body>
+</html>

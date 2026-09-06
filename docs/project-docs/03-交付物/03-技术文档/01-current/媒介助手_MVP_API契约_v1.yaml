@@ -1,0 +1,2023 @@
+openapi: 3.1.0
+jsonSchemaDialect: https://json-schema.org/draft/2020-12/schema
+info:
+  title: 媒介助手 MVP API
+  version: 1.0.0
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Proprietary
+  description: |
+    媒介助手 MVP 前后端契约。覆盖个人账号资料、小红书扫码连接、项目与分组、
+    自然语言规则解析、异步达人检索、候选管理、知识库与图文内容辅助审核。
+
+    用户身份始终从已验证的 Supabase access token 获取。请求体或路径中的资源 ID
+    只用于资源定位，不能代替服务端所有权校验。
+
+    AI 审核结果仅供人工复核，不构成法律意见。小红书数据链路必须以真实 PoC
+    验证，不能用演示数据代表真实连接成功。
+servers:
+  - url: '{scheme}://{host}/api/v1'
+    description: 本地开发
+    variables:
+      scheme:
+        default: http
+        enum: [http, https]
+      host:
+        default: localhost:3001
+tags:
+  - name: System
+    description: 服务状态与诊断入口
+  - name: Profile
+    description: 当前登录用户资料
+  - name: PlatformConnections
+    description: 小红书扫码连接及会话状态
+  - name: Projects
+    description: 推广项目与自定义分组
+  - name: Search
+    description: 自然语言规则解析和异步达人检索
+  - name: Creators
+    description: 项目候选达人管理、去重和导出
+  - name: KnowledgeBases
+    description: 公共广告法库与用户私有知识库
+  - name: Audits
+    description: 图文内容审核草稿、任务和结果
+  - name: Tasks
+    description: 通用异步任务状态与 SSE 事件
+security:
+  - bearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [System]
+      operationId: getHealth
+      summary: 服务健康检查
+      security: []
+      responses:
+        '200':
+          description: 服务可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /me:
+    get:
+      tags: [Profile]
+      operationId: getCurrentProfile
+      summary: 获取当前用户资料
+      responses:
+        '200':
+          description: 当前用户资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    patch:
+      tags: [Profile]
+      operationId: updateCurrentProfile
+      summary: 更新当前用户资料
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: 更新后的资料
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /platform-connections/xiaohongshu:
+    post:
+      tags: [PlatformConnections]
+      operationId: createXiaohongshuConnection
+      summary: 创建或刷新小红书扫码连接
+      description: 创建短时二维码会话。响应不包含 Cookie、Token 或浏览器 Storage State。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201':
+          description: 已创建二维码会话
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedPlatformConnectionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    get:
+      tags: [PlatformConnections]
+      operationId: getXiaohongshuConnection
+      summary: 获取当前小红书连接状态
+      responses:
+        '200':
+          description: 当前连接状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformConnectionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      tags: [PlatformConnections]
+      operationId: disconnectXiaohongshu
+      summary: 断开并删除小红书会话
+      responses:
+        '204':
+          description: 已断开连接
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: 获取当前用户的项目列表
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/ProjectStatus'
+      responses:
+        '200':
+          description: 项目列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: 创建推广项目
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '201':
+          description: 已创建项目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /projects/{projectId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: 获取项目详情和统计
+      responses:
+        '200':
+          description: 项目详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Projects]
+      operationId: updateProject
+      summary: 更新项目
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectRequest'
+      responses:
+        '200':
+          description: 更新后的项目
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Projects]
+      operationId: archiveProject
+      summary: 归档项目
+      description: MVP 不物理删除项目及候选历史，只将项目标记为 archived。
+      responses:
+        '204':
+          description: 已归档
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/groups:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Projects]
+      operationId: listProjectGroups
+      summary: 获取项目自定义分组
+      responses:
+        '200':
+          description: 分组列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Projects]
+      operationId: createProjectGroup
+      summary: 创建项目分组
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGroupRequest'
+      responses:
+        '201':
+          description: 已创建分组
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /groups/{groupId}:
+    parameters:
+      - $ref: '#/components/parameters/GroupId'
+    patch:
+      tags: [Projects]
+      operationId: updateProjectGroup
+      summary: 重命名项目分组
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateGroupRequest'
+      responses:
+        '200':
+          description: 更新后的分组
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroupResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags: [Projects]
+      operationId: deleteProjectGroup
+      summary: 删除空分组
+      description: 分组内仍有达人时返回 GROUP_NOT_EMPTY，不自动移动达人。
+      responses:
+        '204':
+          description: 已删除
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /projects/{projectId}/search-rules:parse:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Search]
+      operationId: parseSearchRule
+      summary: 将自然语言解析为待确认筛选规则
+      description: 此接口只解析规则，不启动真实小红书检索。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ParseSearchRuleRequest'
+      responses:
+        '200':
+          description: 结构化规则和歧义提示
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ParsedSearchRuleResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /projects/{projectId}/search-tasks:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Search]
+      operationId: listProjectSearchTasks
+      summary: 获取项目检索任务历史
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 检索任务列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchTaskListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Search]
+      operationId: createSearchTask
+      summary: 确认规则并创建真实达人检索任务
+      description: |
+        默认目标返回 50 人。服务端自动排除当前项目已有的小红书用户 ID；
+        未连接、会话过期或存在同类运行任务时返回明确错误。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSearchTaskRequest'
+      responses:
+        '202':
+          description: 任务已排队
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchTaskResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /search-tasks/{searchTaskId}:
+    parameters:
+      - $ref: '#/components/parameters/SearchTaskId'
+    get:
+      tags: [Search]
+      operationId: getSearchTask
+      summary: 获取检索任务详情与进度
+      responses:
+        '200':
+          description: 检索任务详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchTaskResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /search-tasks/{searchTaskId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/SearchTaskId'
+    post:
+      tags: [Search]
+      operationId: cancelSearchTask
+      summary: 请求取消检索任务
+      responses:
+        '202':
+          description: 已接受取消请求
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchTaskResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /projects/{projectId}/creators:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Creators]
+      operationId: listProjectCreators
+      summary: 获取项目达人列表
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: decision_status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CreatorDecisionStatus'
+        - name: group_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: tag
+          in: query
+          schema:
+            type: string
+            maxLength: 40
+        - name: q
+          in: query
+          description: 按昵称或小红书号搜索
+          schema:
+            type: string
+            maxLength: 100
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [match_score_desc, followers_asc, activity_desc, updated_at_desc]
+            default: match_score_desc
+      responses:
+        '200':
+          description: 达人列表与统计
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectCreatorListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /project-creators/{projectCreatorId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectCreatorId'
+    get:
+      tags: [Creators]
+      operationId: getProjectCreator
+      summary: 获取项目达人详情和证据
+      responses:
+        '200':
+          description: 达人详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectCreatorResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Creators]
+      operationId: updateProjectCreator
+      summary: 更新达人决策状态、分组、标签或联系状态
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProjectCreatorRequest'
+      responses:
+        '200':
+          description: 更新后的项目达人
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectCreatorResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/creators:bulk-update:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      tags: [Creators]
+      operationId: bulkUpdateProjectCreators
+      summary: 批量更新达人状态或分组
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkUpdateProjectCreatorsRequest'
+      responses:
+        '200':
+          description: 批量更新结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkUpdateProjectCreatorsResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /projects/{projectId}/creators/export.xlsx:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Creators]
+      operationId: exportProjectCreators
+      summary: 导出项目达人 Excel
+      parameters:
+        - name: decision_status
+          in: query
+          schema:
+            $ref: '#/components/schemas/CreatorDecisionStatus'
+        - name: group_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Excel 文件，包含主页链接、采集时间、证据摘要、分组和状态
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /knowledge-bases:
+    get:
+      tags: [KnowledgeBases]
+      operationId: listKnowledgeBases
+      summary: 获取公共广告法库和当前用户私有知识库
+      responses:
+        '200':
+          description: 知识库列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBaseListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [KnowledgeBases]
+      operationId: createKnowledgeBase
+      summary: 创建私有知识库
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKnowledgeBaseRequest'
+      responses:
+        '201':
+          description: 已创建私有知识库
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBaseResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /knowledge-bases/{knowledgeBaseId}:
+    parameters:
+      - $ref: '#/components/parameters/KnowledgeBaseId'
+    get:
+      tags: [KnowledgeBases]
+      operationId: getKnowledgeBase
+      summary: 获取知识库详情
+      responses:
+        '200':
+          description: 知识库详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBaseResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [KnowledgeBases]
+      operationId: updateKnowledgeBase
+      summary: 更新私有知识库名称
+      description: 公共广告法知识库不可通过此接口修改。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateKnowledgeBaseRequest'
+      responses:
+        '200':
+          description: 更新后的知识库
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeBaseResponse'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [KnowledgeBases]
+      operationId: deleteKnowledgeBase
+      summary: 删除私有知识库及其文档
+      description: 公共广告法知识库不可删除；历史审核保留当时的规则版本快照。
+      responses:
+        '204':
+          description: 已删除
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /knowledge-bases/{knowledgeBaseId}/document-upload-intents:
+    parameters:
+      - $ref: '#/components/parameters/KnowledgeBaseId'
+    post:
+      tags: [KnowledgeBases]
+      operationId: createKnowledgeDocumentUploadIntent
+      summary: 创建知识库文档签名上传凭证
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDocumentUploadIntentRequest'
+      responses:
+        '201':
+          description: 短时签名上传信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadIntentResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /knowledge-bases/{knowledgeBaseId}/documents:
+    parameters:
+      - $ref: '#/components/parameters/KnowledgeBaseId'
+    get:
+      tags: [KnowledgeBases]
+      operationId: listKnowledgeDocuments
+      summary: 获取知识库文档列表
+      responses:
+        '200':
+          description: 文档列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeDocumentListResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [KnowledgeBases]
+      operationId: commitKnowledgeDocument
+      summary: 确认上传完成并创建解析任务
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommitKnowledgeDocumentRequest'
+      responses:
+        '202':
+          description: 文档已登记，解析任务已排队
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QueuedKnowledgeDocumentResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /knowledge-documents/{documentId}:
+    parameters:
+      - $ref: '#/components/parameters/DocumentId'
+    get:
+      tags: [KnowledgeBases]
+      operationId: getKnowledgeDocument
+      summary: 获取文档解析状态
+      responses:
+        '200':
+          description: 文档详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeDocumentResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [KnowledgeBases]
+      operationId: deleteKnowledgeDocument
+      summary: 删除私有知识库文档
+      responses:
+        '204':
+          description: 已删除，知识库生成新版本
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /audit-asset-upload-intents:
+    post:
+      tags: [Audits]
+      operationId: createAuditAssetUploadIntent
+      summary: 创建审核图片签名上传凭证
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAuditAssetUploadIntentRequest'
+      responses:
+        '201':
+          description: 短时签名上传信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadIntentResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /audit-tasks:
+    get:
+      tags: [Audits]
+      operationId: listAuditTasks
+      summary: 获取当前用户审核记录
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/PageSize'
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/AuditStatus'
+        - name: overall_risk
+          in: query
+          schema:
+            $ref: '#/components/schemas/RiskLevel'
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: 审核记录列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditTaskListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Audits]
+      operationId: createAuditTask
+      summary: 创建图文审核草稿
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAuditTaskRequest'
+      responses:
+        '201':
+          description: 已创建审核草稿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditTaskResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /audit-tasks/{auditTaskId}:
+    parameters:
+      - $ref: '#/components/parameters/AuditTaskId'
+    get:
+      tags: [Audits]
+      operationId: getAuditTask
+      summary: 获取审核任务、结果和版本快照
+      responses:
+        '200':
+          description: 审核任务详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditTaskResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Audits]
+      operationId: updateAuditDraft
+      summary: 更新审核草稿
+      description: 只有 draft 状态允许修改。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAuditTaskRequest'
+      responses:
+        '200':
+          description: 更新后的草稿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditTaskResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /audit-tasks/{auditTaskId}/submit:
+    parameters:
+      - $ref: '#/components/parameters/AuditTaskId'
+    post:
+      tags: [Audits]
+      operationId: submitAuditTask
+      summary: 提交图文审核任务
+      description: 公共广告法库固定启用；私有知识库按草稿中选择的版本生成快照。
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: 审核任务已排队
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmittedAuditTaskResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+
+  /audit-tasks/{auditTaskId}/reruns:
+    parameters:
+      - $ref: '#/components/parameters/AuditTaskId'
+    post:
+      tags: [Audits]
+      operationId: rerunAuditTask
+      summary: 复制历史输入并创建新的审核草稿
+      description: 不覆盖原审核结果；新草稿可重新选择当前可用知识库。
+      responses:
+        '201':
+          description: 新审核草稿
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditTaskResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/{taskId}:
+    parameters:
+      - $ref: '#/components/parameters/TaskId'
+    get:
+      tags: [Tasks]
+      operationId: getTask
+      summary: 获取通用异步任务状态
+      responses:
+        '200':
+          description: 任务状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /tasks/{taskId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/TaskId'
+    post:
+      tags: [Tasks]
+      operationId: cancelTask
+      summary: 请求取消可取消的异步任务
+      description: 检索、知识库解析和内容审核在进入不可中断提交阶段前允许取消；不支持取消时返回 TASK_NOT_CANCELLABLE。
+      responses:
+        '202':
+          description: 已接受取消请求
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /tasks/{taskId}/events:
+    parameters:
+      - $ref: '#/components/parameters/TaskId'
+      - name: after_seq
+        in: query
+        description: 从该事件序号之后开始发送，用于断线续传
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: Last-Event-ID
+        in: header
+        description: 与 after_seq 等价；两者同时出现时取更大的有效序号
+        schema:
+          type: integer
+          minimum: 0
+    get:
+      tags: [Tasks]
+      operationId: streamTaskEvents
+      summary: 订阅异步任务事件
+      description: |
+        SSE 事件名为 task.progress、task.status 或 task.error；data 为 TaskEvent JSON。
+        服务端最长每 15 秒发送一次 `: heartbeat` 注释帧。浏览器也可发送 Last-Event-ID；
+        客户端 30 秒未收到事件或心跳时主动中止并重连。SSE 不可用时轮询 GET /tasks/{taskId}。
+      responses:
+        '200':
+          description: Server-Sent Events 流
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                const: no-cache
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                contentMediaType: application/json
+                contentSchema:
+                  $ref: '#/components/schemas/TaskEvent'
+                examples:
+                  - "id: 12\nevent: task.progress\ndata: {\"seq\":12,\"task_id\":\"00000000-0000-0000-0000-000000000000\",\"status\":\"running\",\"stage\":\"analyzing_creators\",\"terminal\":false,\"progress\":45,\"message_code\":\"SEARCH_ANALYZING\",\"error_code\":null,\"retry_after_seconds\":null,\"occurred_at\":\"2026-08-15T12:00:00Z\"}\n\n"
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Supabase Auth access token
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: 客户端生成的 UUID；同一用户、接口和键返回同一创建结果。
+      schema:
+        type: string
+        format: uuid
+    Cursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+        maxLength: 500
+    PageSize:
+      name: page_size
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SearchTaskId:
+      name: searchTaskId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ProjectCreatorId:
+      name: projectCreatorId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    KnowledgeBaseId:
+      name: knowledgeBaseId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DocumentId:
+      name: documentId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AuditTaskId:
+      name: auditTaskId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    Unauthorized:
+      description: access token 缺失、无效或已过期
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: 当前用户无权执行该操作
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    NotFound:
+      description: 资源不存在，或资源不属于当前用户
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    ValidationError:
+      description: 请求格式、字段或文件声明无效
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Conflict:
+      description: 资源状态、幂等键或并发任务冲突
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unprocessable:
+      description: 请求合法但当前业务条件不满足
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    RateLimited:
+      description: 用户并发、API 或平台访问频率受限
+      headers:
+        Retry-After:
+          schema: { type: integer, minimum: 1 }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  schemas:
+    Meta:
+      type: object
+      additionalProperties: false
+      required: [request_id]
+      properties:
+        request_id: { type: string, format: uuid }
+        next_cursor: { type: [string, 'null'] }
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required: [error, meta]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message, retryable]
+          properties:
+            code: { type: string, pattern: '^[A-Z][A-Z0-9_]+$' }
+            message: { type: string }
+            retryable: { type: boolean }
+            details: { type: object, additionalProperties: true }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    HealthResponse:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          required: [status, version, time]
+          properties:
+            status: { type: string, const: ok }
+            version: { type: string }
+            time: { type: string, format: date-time }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    UserProfile:
+      type: object
+      additionalProperties: false
+      required: [id, email, display_name, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string, minLength: 1, maxLength: 50 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    ProfileResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/UserProfile' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    UpdateProfileRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 50 }
+
+    PlatformConnectionStatus:
+      type: string
+      enum: [disconnected, qr_pending, qr_scanned, connected, expired, restricted, failed]
+    PlatformConnection:
+      type: object
+      additionalProperties: false
+      required: [id, task_id, platform, status, created_at, updated_at]
+      properties:
+        id: { type: [string, 'null'], format: uuid }
+        task_id: { type: [string, 'null'], format: uuid }
+        platform: { type: string, const: xiaohongshu }
+        status: { $ref: '#/components/schemas/PlatformConnectionStatus' }
+        qr_image_url: { type: [string, 'null'], format: uri }
+        qr_expires_at: { type: [string, 'null'], format: date-time }
+        session_expires_at: { type: [string, 'null'], format: date-time }
+        last_verified_at: { type: [string, 'null'], format: date-time }
+        account_display_name: { type: [string, 'null'], maxLength: 200 }
+        account_handle_masked: { type: [string, 'null'], maxLength: 200 }
+        message_code: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    PlatformConnectionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/PlatformConnection' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    CreatedPlatformConnection:
+      allOf:
+        - $ref: '#/components/schemas/PlatformConnection'
+        - type: object
+          required: [id, task_id]
+          properties:
+            id: { type: string, format: uuid }
+            task_id: { type: string, format: uuid }
+    CreatedPlatformConnectionResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/CreatedPlatformConnection' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    ProjectStatus:
+      type: string
+      enum: [active, archived]
+    ProjectStats:
+      type: object
+      additionalProperties: false
+      required: [pending, selected, discarded, total]
+      properties:
+        pending: { type: integer, minimum: 0 }
+        selected: { type: integer, minimum: 0 }
+        discarded: { type: integer, minimum: 0 }
+        total: { type: integer, minimum: 0 }
+    Project:
+      type: object
+      additionalProperties: false
+      required: [id, name, product_name, status, stats, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        product_name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        status: { $ref: '#/components/schemas/ProjectStatus' }
+        stats: { $ref: '#/components/schemas/ProjectStats' }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateProjectRequest:
+      type: object
+      additionalProperties: false
+      required: [name, product_name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        product_name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 1000 }
+    UpdateProjectRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        product_name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: [string, 'null'], maxLength: 1000 }
+        status: { $ref: '#/components/schemas/ProjectStatus' }
+    ProjectResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/Project' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    ProjectListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Project' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    Group:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, name, creator_count, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        name: { type: string, minLength: 1, maxLength: 50 }
+        creator_count: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateGroupRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 50 }
+    UpdateGroupRequest:
+      $ref: '#/components/schemas/CreateGroupRequest'
+    GroupResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/Group' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    GroupListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/Group' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    NumericComparison:
+      type: object
+      additionalProperties: false
+      required: [operator, value]
+      description: 单个非负整数比较；区间条件在 search-rule.v1 中必须进入 ambiguities，由用户拆分或确认，不能静默丢弃边界。
+      properties:
+        operator: { type: string, enum: [lt, lte, eq, gte, gt] }
+        value: { type: integer, minimum: 0 }
+    SemanticCondition:
+      type: object
+      additionalProperties: false
+      required: [id, type, terms, match]
+      properties:
+        id: { type: string, maxLength: 50 }
+        type: { type: string, enum: [experience, concern, content_topic, persona, custom] }
+        terms:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items: { type: string, maxLength: 50 }
+        match: { type: string, enum: [any, all, none] }
+    RankingRule:
+      type: object
+      additionalProperties: false
+      required: [field, direction]
+      properties:
+        field: { type: string, enum: [activity, followers, match_score, recent_post_at] }
+        direction: { type: string, enum: [asc, desc] }
+    ParsedSearchRule:
+      type: object
+      additionalProperties: false
+      required: [hard_filters, semantic_conditions, ranking, limit, ambiguities, schema_version]
+      properties:
+        hard_filters:
+          type: object
+          additionalProperties: false
+          properties:
+            followers: { $ref: '#/components/schemas/NumericComparison' }
+            posts_last_30d: { $ref: '#/components/schemas/NumericComparison' }
+            days_since_last_post: { $ref: '#/components/schemas/NumericComparison' }
+        semantic_conditions:
+          type: array
+          maxItems: 20
+          items: { $ref: '#/components/schemas/SemanticCondition' }
+        ranking:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/RankingRule' }
+        limit: { type: integer, minimum: 1, maximum: 50, default: 50 }
+        ambiguities:
+          type: array
+          items: { type: string, maxLength: 300 }
+        schema_version: { type: string, const: search-rule.v1 }
+    ParseSearchRuleRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query: { type: string, minLength: 3, maxLength: 2000 }
+        limit: { type: integer, minimum: 1, maximum: 50, default: 50 }
+    ParsedSearchRuleData:
+      type: object
+      additionalProperties: false
+      required: [query, parsed_rule, model_version, prompt_version]
+      properties:
+        query: { type: string }
+        parsed_rule: { $ref: '#/components/schemas/ParsedSearchRule' }
+        model_version: { type: string }
+        prompt_version: { type: string }
+    ParsedSearchRuleResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/ParsedSearchRuleData' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    SearchTaskStatus:
+      type: string
+      enum: [queued, validating_session, collecting, hard_filtering, analyzing, persisting, completed, partial, cancelled, session_expired, rate_limited, failed]
+    CreateSearchTaskRequest:
+      type: object
+      additionalProperties: false
+      required: [query, confirmed_rule]
+      properties:
+        query: { type: string, minLength: 3, maxLength: 2000 }
+        confirmed_rule: { $ref: '#/components/schemas/ParsedSearchRule' }
+        exclude_existing: { type: boolean, const: true, default: true }
+    SearchTask:
+      type: object
+      additionalProperties: false
+      required: [id, task_id, project_id, query, confirmed_rule, status, progress, terminal, target_count, collected_count, persisted_count, duplicate_count, stage_counts, partial_reason, can_continue, retry_after_seconds, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        task_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        query: { type: string }
+        confirmed_rule: { $ref: '#/components/schemas/ParsedSearchRule' }
+        status: { $ref: '#/components/schemas/SearchTaskStatus' }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        terminal: { type: boolean }
+        target_count: { type: integer, minimum: 1, maximum: 50 }
+        collected_count: { type: integer, minimum: 0 }
+        persisted_count: { type: integer, minimum: 0 }
+        duplicate_count: { type: integer, minimum: 0 }
+        stage_counts: { $ref: '#/components/schemas/SearchStageCounts' }
+        partial_reason:
+          oneOf:
+            - $ref: '#/components/schemas/SearchPartialReason'
+            - type: 'null'
+        can_continue: { type: boolean }
+        retry_after_seconds: { type: [integer, 'null'], minimum: 1 }
+        message_code: { type: [string, 'null'] }
+        error_code: { type: [string, 'null'] }
+        error_message: { type: [string, 'null'] }
+        started_at: { type: [string, 'null'], format: date-time }
+        completed_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    SearchStageCounts:
+      type: object
+      additionalProperties: false
+      required: [notes_collected, creators_discovered, profile_failures, follower_filtered, recent_likes_filtered, semantic_filtered, analysis_errors, existing_duplicates, persisted]
+      properties:
+        notes_collected: { type: integer, minimum: 0 }
+        creators_discovered: { type: integer, minimum: 0 }
+        profile_failures: { type: integer, minimum: 0 }
+        follower_filtered: { type: integer, minimum: 0 }
+        recent_likes_filtered: { type: integer, minimum: 0 }
+        semantic_filtered: { type: integer, minimum: 0 }
+        analysis_errors: { type: integer, minimum: 0 }
+        existing_duplicates: { type: integer, minimum: 0 }
+        persisted: { type: integer, minimum: 0 }
+    SearchPartialReason:
+      type: string
+      enum: [source_exhausted, session_expired, platform_rate_limited, platform_restricted, user_cancelled, upstream_error]
+    SearchTaskResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/SearchTask' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    SearchTaskListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/SearchTask' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    CreatorDecisionStatus:
+      type: string
+      enum: [pending, selected, discarded]
+    ContactStatus:
+      type: string
+      enum: [not_contacted, contacting, cooperated, unreachable]
+    CreatorEvidence:
+      type: object
+      additionalProperties: false
+      required: [id, evidence_type, excerpt, captured_at]
+      properties:
+        id: { type: string, format: uuid }
+        evidence_type: { type: string, enum: [profile, post, metric, ai_analysis] }
+        source_url: { type: [string, 'null'], format: uri }
+        excerpt: { type: string, maxLength: 2000 }
+        confidence: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        captured_at: { type: string, format: date-time }
+    ProjectCreator:
+      type: object
+      additionalProperties: false
+      required: [id, project_id, platform_creator_id, nickname, profile_url, followers, activity_score, match_score, data_completeness, field_warnings, decision_status, tags, contact_status, evidence_summary, captured_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        platform_creator_id: { type: string, minLength: 1, maxLength: 200 }
+        nickname: { type: string, minLength: 1, maxLength: 200 }
+        handle: { type: [string, 'null'], maxLength: 200 }
+        profile_url: { type: string, format: uri }
+        avatar_url: { type: [string, 'null'], format: uri }
+        followers: { type: [integer, 'null'], minimum: 0 }
+        posts_last_30d: { type: [integer, 'null'], minimum: 0 }
+        median_engagement: { type: [number, 'null'], minimum: 0 }
+        last_post_at: { type: [string, 'null'], format: date-time }
+        activity_score: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        match_score: { type: [integer, 'null'], minimum: 0, maximum: 100 }
+        data_completeness: { type: string, enum: [complete, partial] }
+        field_warnings:
+          type: array
+          items: { type: string, maxLength: 300 }
+        decision_status: { $ref: '#/components/schemas/CreatorDecisionStatus' }
+        group:
+          oneOf:
+            - $ref: '#/components/schemas/Group'
+            - type: 'null'
+        tags:
+          type: array
+          maxItems: 30
+          items: { type: string, maxLength: 40 }
+        contact_status: { $ref: '#/components/schemas/ContactStatus' }
+        discard_reason: { type: [string, 'null'], maxLength: 500 }
+        evidence_summary: { type: string, maxLength: 2000 }
+        evidence:
+          type: array
+          items: { $ref: '#/components/schemas/CreatorEvidence' }
+        captured_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    UpdateProjectCreatorRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        decision_status: { $ref: '#/components/schemas/CreatorDecisionStatus' }
+        group_id: { type: [string, 'null'], format: uuid }
+        tags:
+          type: array
+          maxItems: 30
+          items: { type: string, minLength: 1, maxLength: 40 }
+        contact_status: { $ref: '#/components/schemas/ContactStatus' }
+        discard_reason: { type: [string, 'null'], maxLength: 500 }
+    BulkUpdateProjectCreatorsRequest:
+      type: object
+      additionalProperties: false
+      required: [ids, changes]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          uniqueItems: true
+          items: { type: string, format: uuid }
+        changes:
+          type: object
+          additionalProperties: false
+          minProperties: 1
+          properties:
+            decision_status: { $ref: '#/components/schemas/CreatorDecisionStatus' }
+            group_id: { type: [string, 'null'], format: uuid }
+    ProjectCreatorResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/ProjectCreator' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    ProjectCreatorListData:
+      type: object
+      additionalProperties: false
+      required: [items, stats]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ProjectCreator' }
+        stats: { $ref: '#/components/schemas/ProjectStats' }
+    ProjectCreatorListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/ProjectCreatorListData' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    BulkUpdateResult:
+      type: object
+      additionalProperties: false
+      required: [updated_count, failed_ids]
+      properties:
+        updated_count: { type: integer, minimum: 0 }
+        failed_ids:
+          type: array
+          items: { type: string, format: uuid }
+    BulkUpdateProjectCreatorsResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/BulkUpdateResult' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    KnowledgeBaseScope:
+      type: string
+      enum: [public_law, private]
+    KnowledgeBaseStatus:
+      type: string
+      enum: [empty, processing, ready, needs_attention, failed]
+    KnowledgeBase:
+      type: object
+      additionalProperties: false
+      required: [id, scope, name, status, version, document_count, ready_document_count, selectable, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        scope: { $ref: '#/components/schemas/KnowledgeBaseScope' }
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: [string, 'null'], maxLength: 500 }
+        status: { $ref: '#/components/schemas/KnowledgeBaseStatus' }
+        version: { type: integer, minimum: 1 }
+        document_count: { type: integer, minimum: 0 }
+        ready_document_count: { type: integer, minimum: 0 }
+        selectable: { type: boolean }
+        source_url: { type: [string, 'null'], format: uri }
+        effective_at: { type: [string, 'null'], format: date }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    CreateKnowledgeBaseRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: string, maxLength: 500 }
+    UpdateKnowledgeBaseRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        description: { type: [string, 'null'], maxLength: 500 }
+    KnowledgeBaseResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/KnowledgeBase' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    KnowledgeBaseListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeBase' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    CreateDocumentUploadIntentRequest:
+      type: object
+      additionalProperties: false
+      required: [file_name, mime_type, size_bytes, checksum_sha256]
+      properties:
+        file_name: { type: string, minLength: 1, maxLength: 255 }
+        mime_type:
+          type: string
+          enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain, text/markdown]
+        size_bytes: { type: integer, minimum: 1, maximum: 20971520 }
+        checksum_sha256: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+    CreateAuditAssetUploadIntentRequest:
+      type: object
+      additionalProperties: false
+      required: [file_name, mime_type, size_bytes, checksum_sha256]
+      properties:
+        file_name: { type: string, minLength: 1, maxLength: 255 }
+        mime_type: { type: string, enum: [image/jpeg, image/png] }
+        size_bytes: { type: integer, minimum: 1, maximum: 10485760 }
+        checksum_sha256: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+    UploadIntent:
+      type: object
+      additionalProperties: false
+      required: [upload_id, storage_path, method, upload_url, required_headers, expires_at]
+      properties:
+        upload_id: { type: string, format: uuid }
+        storage_path: { type: string }
+        method: { type: string, const: PUT }
+        upload_url: { type: string, format: uri }
+        required_headers:
+          type: object
+          additionalProperties: { type: string }
+        expires_at: { type: string, format: date-time }
+    UploadIntentResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/UploadIntent' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    KnowledgeDocumentStatus:
+      type: string
+      enum: [uploaded, parsing, chunking, embedding, validating, ready, needs_attention, cancelled, failed]
+    CommitKnowledgeDocumentRequest:
+      type: object
+      additionalProperties: false
+      required: [upload_id, storage_path, file_name, mime_type, size_bytes, checksum_sha256]
+      properties:
+        upload_id: { type: string, format: uuid }
+        storage_path: { type: string }
+        file_name: { type: string, minLength: 1, maxLength: 255 }
+        mime_type:
+          type: string
+          enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain, text/markdown]
+        size_bytes: { type: integer, minimum: 1, maximum: 20971520 }
+        checksum_sha256: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+    KnowledgeDocument:
+      type: object
+      additionalProperties: false
+      required: [id, task_id, knowledge_base_id, file_name, mime_type, size_bytes, checksum_sha256, status, version, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        task_id:
+          type: [string, 'null']
+          format: uuid
+          description: 私有文档解析任务 ID；平台维护的公共广告法文档为 null。
+        knowledge_base_id: { type: string, format: uuid }
+        file_name: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer, minimum: 1 }
+        checksum_sha256: { type: string }
+        status: { $ref: '#/components/schemas/KnowledgeDocumentStatus' }
+        version: { type: integer, minimum: 1 }
+        chunk_count: { type: [integer, 'null'], minimum: 0 }
+        page_count: { type: [integer, 'null'], minimum: 0 }
+        message_code: { type: [string, 'null'] }
+        error_code: { type: [string, 'null'] }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    QueuedKnowledgeDocument:
+      allOf:
+        - $ref: '#/components/schemas/KnowledgeDocument'
+        - type: object
+          required: [task_id]
+          properties:
+            task_id: { type: string, format: uuid }
+    KnowledgeDocumentResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/KnowledgeDocument' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    QueuedKnowledgeDocumentResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/QueuedKnowledgeDocument' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    KnowledgeDocumentListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeDocument' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    RiskLevel:
+      type: string
+      enum: [low, medium, high, needs_confirmation]
+    AuditStatus:
+      type: string
+      enum: [draft, queued, validating, extracting, retrieving, analyzing, validating_result, completed, needs_attention, cancelled, failed]
+    AuditAssetInput:
+      type: object
+      additionalProperties: false
+      required: [upload_id, storage_path, file_name, mime_type, size_bytes, checksum_sha256, sort_order]
+      properties:
+        upload_id: { type: string, format: uuid }
+        storage_path: { type: string }
+        file_name: { type: string, minLength: 1, maxLength: 255 }
+        mime_type: { type: string, enum: [image/jpeg, image/png] }
+        size_bytes: { type: integer, minimum: 1, maximum: 10485760 }
+        checksum_sha256: { type: string, pattern: '^[a-fA-F0-9]{64}$' }
+        sort_order: { type: integer, minimum: 0, maximum: 8 }
+    AuditAsset:
+      type: object
+      additionalProperties: false
+      required: [id, file_name, mime_type, size_bytes, sort_order, extract_status]
+      properties:
+        id: { type: string, format: uuid }
+        file_name: { type: string }
+        mime_type: { type: string }
+        size_bytes: { type: integer, minimum: 1 }
+        sort_order: { type: integer, minimum: 0, maximum: 8 }
+        preview_url: { type: [string, 'null'], format: uri }
+        extract_status: { type: string, enum: [pending, extracting, ready, low_confidence, failed] }
+        extracted_text: { type: [string, 'null'] }
+        extraction_confidence: { type: [number, 'null'], minimum: 0, maximum: 1 }
+    CreateAuditTaskRequest:
+      type: object
+      additionalProperties: false
+      required: [title, body, assets, private_knowledge_base_ids]
+      properties:
+        task_name: { type: [string, 'null'], maxLength: 100 }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        body: { type: string, minLength: 1, maxLength: 20000 }
+        requirements: { type: [string, 'null'], maxLength: 5000 }
+        assets:
+          type: array
+          minItems: 1
+          maxItems: 9
+          items: { $ref: '#/components/schemas/AuditAssetInput' }
+        private_knowledge_base_ids:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    UpdateAuditTaskRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        task_name: { type: [string, 'null'], maxLength: 100 }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        body: { type: string, minLength: 1, maxLength: 20000 }
+        requirements: { type: [string, 'null'], maxLength: 5000 }
+        assets:
+          type: array
+          minItems: 1
+          maxItems: 9
+          items: { $ref: '#/components/schemas/AuditAssetInput' }
+        private_knowledge_base_ids:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    KnowledgeSourceSnapshot:
+      type: object
+      additionalProperties: false
+      required: [knowledge_base_id, scope, name, version, document_versions]
+      properties:
+        knowledge_base_id: { type: string, format: uuid }
+        scope: { $ref: '#/components/schemas/KnowledgeBaseScope' }
+        name: { type: string }
+        version: { type: integer, minimum: 1 }
+        document_versions:
+          type: array
+          items:
+            type: object
+            required: [document_id, version]
+            properties:
+              document_id: { type: string, format: uuid }
+              version: { type: integer, minimum: 1 }
+    FindingLocation:
+      type: object
+      additionalProperties: false
+      required: [type, quote]
+      properties:
+        type: { type: string, enum: [title, body, image] }
+        quote: { type: string, maxLength: 1000 }
+        asset_id: { type: [string, 'null'], format: uuid }
+        start_offset: { type: [integer, 'null'], minimum: 0 }
+        end_offset: { type: [integer, 'null'], minimum: 0 }
+    FindingSource:
+      type: object
+      additionalProperties: false
+      required: [scope, knowledge_base_id, knowledge_base_version, document_id, document_version, chunk_id, document, locator, excerpt]
+      properties:
+        scope: { $ref: '#/components/schemas/KnowledgeBaseScope' }
+        knowledge_base_id: { type: string, format: uuid }
+        knowledge_base_version: { type: integer, minimum: 1 }
+        document_id: { type: string, format: uuid }
+        document_version: { type: integer, minimum: 1 }
+        chunk_id: { type: string, format: uuid }
+        document: { type: string }
+        locator: { type: string }
+        excerpt: { type: string, maxLength: 2000 }
+        source_url: { type: [string, 'null'], format: uri }
+    AuditFinding:
+      type: object
+      additionalProperties: false
+      required: [id, risk_level, category, location, source, explanation, suggestion, confidence]
+      properties:
+        id: { type: string, format: uuid }
+        risk_level: { $ref: '#/components/schemas/RiskLevel' }
+        category: { type: string, maxLength: 100 }
+        location: { $ref: '#/components/schemas/FindingLocation' }
+        source: { $ref: '#/components/schemas/FindingSource' }
+        explanation: { type: string, maxLength: 3000 }
+        suggestion: { type: string, maxLength: 3000 }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+    RiskCounts:
+      type: object
+      additionalProperties: false
+      required: [high, medium, low, needs_confirmation]
+      properties:
+        high: { type: integer, minimum: 0 }
+        medium: { type: integer, minimum: 0 }
+        low: { type: integer, minimum: 0 }
+        needs_confirmation: { type: integer, minimum: 0 }
+    AuditResult:
+      type: object
+      additionalProperties: false
+      required: [overall_risk, risk_counts, findings, coverage_warnings, disclaimer, schema_version]
+      properties:
+        overall_risk: { $ref: '#/components/schemas/RiskLevel' }
+        risk_counts: { $ref: '#/components/schemas/RiskCounts' }
+        findings:
+          type: array
+          items: { $ref: '#/components/schemas/AuditFinding' }
+        coverage_warnings:
+          type: array
+          items: { $ref: '#/components/schemas/CoverageWarning' }
+        recommended_action: { type: [string, 'null'], maxLength: 2000 }
+        disclaimer:
+          type: string
+          const: AI辅助审核结果，不构成法律意见，需人工复核。
+        schema_version: { type: string, const: content-audit.v1 }
+    CoverageWarning:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum: [IMAGE_TEXT_LOW_CONFIDENCE, IMAGE_TEXT_EXTRACTION_FAILED, INPUT_TRUNCATED, KNOWLEDGE_COVERAGE_LIMITED]
+        message: { type: string, maxLength: 500 }
+        asset_id: { type: [string, 'null'], format: uuid }
+        location: { type: [string, 'null'], maxLength: 200 }
+    AuditTask:
+      type: object
+      additionalProperties: false
+      required: [id, task_name, title, body, assets, status, private_knowledge_base_ids, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        task_id: { type: [string, 'null'], format: uuid }
+        parent_audit_task_id: { type: [string, 'null'], format: uuid }
+        task_name: { type: [string, 'null'] }
+        title: { type: string }
+        body: { type: string }
+        requirements: { type: [string, 'null'] }
+        assets:
+          type: array
+          items: { $ref: '#/components/schemas/AuditAsset' }
+        status: { $ref: '#/components/schemas/AuditStatus' }
+        progress: { type: integer, minimum: 0, maximum: 100, default: 0 }
+        message_code: { type: [string, 'null'] }
+        private_knowledge_base_ids:
+          type: array
+          items: { type: string, format: uuid }
+        knowledge_snapshot:
+          type: array
+          items: { $ref: '#/components/schemas/KnowledgeSourceSnapshot' }
+        result:
+          oneOf:
+            - $ref: '#/components/schemas/AuditResult'
+            - type: 'null'
+        error_code: { type: [string, 'null'] }
+        error_message: { type: [string, 'null'] }
+        submitted_at: { type: [string, 'null'], format: date-time }
+        completed_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AuditTaskResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/AuditTask' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    SubmittedAuditTask:
+      allOf:
+        - $ref: '#/components/schemas/AuditTask'
+        - type: object
+          required: [task_id]
+          properties:
+            task_id: { type: string, format: uuid }
+    SubmittedAuditTaskResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/SubmittedAuditTask' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    AuditTaskSummary:
+      type: object
+      additionalProperties: false
+      required: [id, task_name, title, status, overall_risk, risk_counts, knowledge_base_count, created_at, completed_at]
+      properties:
+        id: { type: string, format: uuid }
+        task_name: { type: [string, 'null'] }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/AuditStatus' }
+        overall_risk:
+          oneOf:
+            - $ref: '#/components/schemas/RiskLevel'
+            - type: 'null'
+        risk_counts:
+          oneOf:
+            - $ref: '#/components/schemas/RiskCounts'
+            - type: 'null'
+        knowledge_base_count: { type: integer, minimum: 1 }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: [string, 'null'], format: date-time }
+    AuditTaskListResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/AuditTaskSummary' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    TaskStatus:
+      type: string
+      enum: [queued, running, completed, partial, needs_attention, cancelled, failed]
+    TaskStage:
+      type: string
+      enum: [queued, xhs_qr_pending, xhs_qr_scanned, xhs_connected, validating_session, collecting, hard_filtering, analyzing_creators, persisting_creators, parsing_document, chunking_document, embedding_document, validating_document, validating_audit, extracting_assets, retrieving_rules, analyzing_content, validating_result, completed, partial, needs_attention, cancelled, failed]
+    TaskMessageCode:
+      type: string
+      enum: [TASK_QUEUED, XHS_QR_READY, XHS_QR_SCANNED, XHS_CONNECTED, SEARCH_VALIDATING_SESSION, SEARCH_COLLECTING, SEARCH_HARD_FILTERING, SEARCH_ANALYZING, SEARCH_PERSISTING, SEARCH_COMPLETED, SEARCH_PARTIAL, KB_PARSING, KB_CHUNKING, KB_EMBEDDING, KB_VALIDATING, KB_READY, AUDIT_VALIDATING, AUDIT_EXTRACTING, AUDIT_RETRIEVING, AUDIT_ANALYZING, AUDIT_VALIDATING_RESULT, AUDIT_COMPLETED, TASK_NEEDS_ATTENTION, TASK_CANCELLED, TASK_FAILED]
+    Task:
+      type: object
+      additionalProperties: false
+      required: [id, type, status, stage, terminal, progress, message_code, retryable, retry_after_seconds, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [xhs_connect, creator_search, knowledge_ingest, content_audit] }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        stage: { $ref: '#/components/schemas/TaskStage' }
+        terminal: { type: boolean }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        message_code:
+          oneOf:
+            - $ref: '#/components/schemas/TaskMessageCode'
+            - type: 'null'
+        error_code: { type: [string, 'null'] }
+        retryable: { type: boolean }
+        retry_after_seconds: { type: [integer, 'null'], minimum: 1 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        completed_at: { type: [string, 'null'], format: date-time }
+    TaskResponse:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { $ref: '#/components/schemas/Task' }
+        meta: { $ref: '#/components/schemas/Meta' }
+    TaskEvent:
+      type: object
+      additionalProperties: false
+      required: [seq, task_id, status, stage, terminal, progress, message_code, error_code, retry_after_seconds, occurred_at]
+      properties:
+        seq: { type: integer, minimum: 1 }
+        task_id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        stage: { $ref: '#/components/schemas/TaskStage' }
+        terminal: { type: boolean }
+        progress: { type: integer, minimum: 0, maximum: 100 }
+        message_code: { $ref: '#/components/schemas/TaskMessageCode' }
+        error_code: { type: [string, 'null'] }
+        retry_after_seconds: { type: [integer, 'null'], minimum: 1 }
+        data: { type: object, additionalProperties: true }
+        occurred_at: { type: string, format: date-time }

@@ -1,0 +1,5 @@
+-- AdProof AI local seed entrypoint.
+--
+-- Keep this file free of real user identifiers, credentials, platform
+-- sessions, and production data. Disposable Auth users for the A/B RLS test
+-- are created during test setup instead of being committed here.

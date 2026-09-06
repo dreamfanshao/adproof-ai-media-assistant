@@ -1,0 +1,4 @@
+{
+  "compilerOptions": { "target": "ES2022", "module": "NodeNext", "moduleResolution": "NodeNext", "strict": true, "esModuleInterop": true, "skipLibCheck": true, "types": ["node"] },
+  "include": ["agent/server.ts", "agent/plan-agent.ts", "agent/run-agent.ts", "agent/catalog.ts", "agent/llm/model.ts", "agent/skills/types.ts"]
+}

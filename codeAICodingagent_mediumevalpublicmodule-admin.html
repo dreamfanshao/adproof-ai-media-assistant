@@ -1,0 +1,14 @@
+﻿<style id="admin-brand-style">
+  .title{display:flex!important;align-items:center;gap:14px;flex-wrap:wrap}
+  .admin-brand{display:flex;align-items:center;gap:9px;font-size:20px;color:#14213d;white-space:nowrap}
+  .admin-mark{width:18px;height:18px;background:#4f7cf3;display:inline-block;transform:rotate(45deg);border-radius:4px}
+  .title h1{margin:0!important}.title p{flex-basis:100%;margin:0 0 0 28px!important}
+</style>
+<script>
+(function(){
+  var t=document.querySelector('.title');
+  if(t&&!document.getElementById('adminBrand')){
+    t.insertAdjacentHTML('afterbegin','<div id="adminBrand" class="admin-brand"><i class="admin-mark" aria-hidden="true"></i><strong>媒介助手</strong></div>');
+  }
+})();
+</script>
