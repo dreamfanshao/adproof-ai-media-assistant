@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, useState, type PropsWithChildren } from "react";
-import { initialCreators, initialKnowledgeBases } from "../data/demo";
+import { initialCreators, initialKnowledgeBases } from "../demo-data";
 import type { Creator, CreatorStatus, KnowledgeBase } from "../types";
 
 interface DemoContextValue {
