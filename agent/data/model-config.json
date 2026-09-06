@@ -1,0 +1,22 @@
+{
+  "text": {
+    "provider": "deepseek",
+    "baseUrl": "https://api.deepseek.com",
+    "model": "deepseek-v4-flash-vision-exp",
+    "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "supportsVision": true
+  },
+  "vision": {
+    "provider": "deepseek",
+    "baseUrl": "https://api.deepseek.com",
+    "model": "deepseek-v4-flash-vision-exp",
+    "apiKeyEnv": "DEEPSEEK_API_KEY",
+    "supportsVision": true
+  },
+  "planner": {
+    "temperature": 0,
+    "maxTokens": 1800
+  },
+  "visionFallbackEnabled": true,
+  "updatedAt": "2026-09-01T07:39:26.959Z"
+}
