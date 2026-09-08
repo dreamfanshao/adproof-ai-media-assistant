@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import pg from "pg";
 
 export type UsageEventName =
   | "signup_completed"
@@ -45,6 +46,27 @@ interface UsageFile { events: UsageEvent[]; apiLogs?: ApiLog[]; updatedAt: strin
 
 const MAX_EVENTS = 30_000;
 let writeQueue: Promise<void> = Promise.resolve();
+
+const { Pool } = pg;
+let analyticsPool: pg.Pool | null | undefined;
+let databaseWriteQueue: Promise<void> = Promise.resolve();
+
+function getAnalyticsPool(): pg.Pool | null {
+  if (analyticsPool !== undefined) return analyticsPool;
+  if (process.env.ADPROOF_ANALYTICS_STORAGE !== "database" || !process.env.DATABASE_URL) {
+    analyticsPool = null;
+    return analyticsPool;
+  }
+  analyticsPool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 1,
+    idleTimeoutMillis: 30_000,
+    connectionTimeoutMillis: 5_000,
+    query_timeout: 5_000,
+  });
+  analyticsPool.on("error", () => undefined);
+  return analyticsPool;
+}
 
 function dataPath() {
   return path.resolve(process.env.ADPROOF_ANALYTICS_DIR || path.join(process.cwd(), "data"), "usage-analytics.json");
@@ -114,6 +136,23 @@ async function writeFile(file: UsageFile) {
 export function recordUsageEvent(input: Omit<UsageEvent, "id" | "createdAt"> & { createdAt?: string }): Promise<void> {
   const event = safeEvent({ ...input, id: randomUUID(), createdAt: input.createdAt ?? new Date().toISOString() });
   writeQueue = writeQueue.then(async () => {
+    const pool = getAnalyticsPool();
+    if (pool) {
+      databaseWriteQueue = databaseWriteQueue.then(async () => {
+        try {
+          await pool.query(
+            `insert into private.analytics_events
+              (event, user_key, module, endpoint, provider, status, duration_ms, metadata, created_at)
+             values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)`,
+            [event.event, event.userKey ?? null, event.module ?? null, event.endpoint ?? null, event.provider ?? null, event.status ?? null, event.durationMs ?? null, JSON.stringify(event.metadata ?? {}), event.createdAt],
+          );
+        } catch {
+          // Telemetry must never break product requests.
+        }
+      });
+      await databaseWriteQueue;
+      return;
+    }
     const file = await readFile();
     file.events.push(event);
     file.events = file.events.slice(-MAX_EVENTS);
@@ -133,7 +172,31 @@ export function recordApiLog(input: Omit<ApiLog, "id" | "createdAt"> & { id?: st
   });
   return apiLogWriteQueue;
 }
-export async function readUsageEvents(): Promise<UsageEvent[]> { return (await readFile()).events; }
+export async function readUsageEvents(): Promise<UsageEvent[]> {
+  const pool = getAnalyticsPool();
+  if (!pool) return (await readFile()).events;
+  try {
+    const result = await pool.query(
+      `select id::text, event, user_key, module, endpoint, provider, status, duration_ms, metadata, created_at
+       from private.analytics_events order by created_at desc limit $1`,
+      [MAX_EVENTS],
+    );
+    return result.rows.map((row) => ({
+      id: String(row.id),
+      event: String(row.event) as UsageEventName,
+      createdAt: new Date(row.created_at).toISOString(),
+      userKey: row.user_key == null ? undefined : String(row.user_key),
+      module: row.module == null ? undefined : String(row.module) as UsageEvent["module"],
+      endpoint: row.endpoint == null ? undefined : String(row.endpoint),
+      provider: row.provider == null ? undefined : String(row.provider),
+      status: row.status == null ? undefined : String(row.status) as UsageEvent["status"],
+      durationMs: row.duration_ms == null ? undefined : Number(row.duration_ms),
+      metadata: row.metadata && typeof row.metadata === "object" ? row.metadata as UsageEvent["metadata"] : undefined,
+    }));
+  } catch {
+    return [];
+  }
+}
 export async function readApiLogs(): Promise<ApiLog[]> { const separate = await readApiLogFile(); return separate.logs.length ? separate.logs : ((await readFile()).apiLogs ?? []); }
 export async function getApiLog(id: string): Promise<ApiLog | undefined> { return (await readApiLogs()).find((item) => item.id === id); }
 

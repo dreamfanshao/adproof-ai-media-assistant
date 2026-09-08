@@ -36,6 +36,7 @@ interface AuthContextValue {
   profile: UserProfile | null;
   profileError: string | null;
   configurationError: string | null;
+  isAdmin: boolean | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
   resendSignUpConfirmation: (email: string) => Promise<void>;
@@ -56,6 +57,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [status, setStatus] = useState<AuthStatus>(supabase ? "loading" : "misconfigured");
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const authRecoveryAttempted = useRef(false);
 
   useEffect(() => {
@@ -104,6 +106,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (!session?.access_token) {
       setProfile(null);
       setProfileError(null);
+      setIsAdmin(null);
       return;
     }
 
@@ -145,6 +148,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
         setProfileError(error instanceof Error ? error.message : "用户资料读取失败。");
       });
 
+    void apiRequest<{ data: { isAdmin: boolean } }>("/operations/access", session.access_token)
+      .then((response) => { if (active) setIsAdmin(response.data.isAdmin); })
+      .catch(() => { if (active) setIsAdmin(false); });
+
     return () => { active = false; };
   }, [session?.access_token]);
 
@@ -154,6 +161,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     user: session?.user ?? null,
     profile,
     profileError,
+    isAdmin,
     configurationError: supabaseConfigError,
     async signIn(email, password) {
       const { data, error } = await requireClient().auth.signInWithPassword({ email, password });
@@ -185,7 +193,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       const { error } = await requireClient().auth.signOut();
       if (error) throw error;
     },
-  }), [profile, profileError, session, status]);
+  }), [isAdmin, profile, profileError, session, status]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

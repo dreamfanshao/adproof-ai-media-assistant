@@ -12,6 +12,8 @@ import { LoginPage } from "./pages/login-page";
 import { NewAuditPage } from "./pages/new-audit-page";
 import { ProjectManagementPage } from "./pages/project-management-page";
 import { SelectedPage } from "./pages/selected-page";
+import { OperationsPage } from "./pages/operations-page";
+import { AdminOnlyRoute } from "./components/auth-route";
 
 export default function App() {
   return (
@@ -30,6 +32,9 @@ export default function App() {
         <Route path="/audit/history" element={<AuditHistoryPage />} />
         <Route path="/knowledge" element={<KnowledgePage />} />
         <Route path="/feedback" element={<FeedbackPage />} />
+        <Route element={<AdminOnlyRoute />}>
+          <Route path="/operations" element={<OperationsPage />} />
+        </Route>
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

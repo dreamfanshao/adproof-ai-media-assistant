@@ -13,6 +13,7 @@ WorkingDirectory=/opt/adproof/current
 EnvironmentFile=/etc/adproof/runtime.conf
 Environment=NODE_ENV=production
 Environment=ADPROOF_ANALYTICS_DIR=/var/lib/adproof/worker-analytics
+Environment=ADPROOF_ANALYTICS_STORAGE=database
 ExecStartPre=/usr/bin/node scripts/check-release.mjs
 ExecStart=/usr/bin/node dist-worker/index.mjs
 Restart=on-failure

@@ -17,6 +17,16 @@ export function ProtectedRoutes() {
   return <Outlet />;
 }
 
+export function AdminOnlyRoute() {
+  const { status, isAdmin } = useAuth();
+  const location = useLocation();
+
+  if (status === "loading" || isAdmin === null) return <AuthLoading />;
+  if (status !== "authenticated") return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  return <Outlet />;
+}
+
 export function AnonymousOnly({ children }: PropsWithChildren) {
   const { status } = useAuth();
   const location = useLocation();

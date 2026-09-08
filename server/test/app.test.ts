@@ -136,6 +136,17 @@ test("GET /api/v1/health is public and contract-shaped", async () => {
   await app.close();
 });
 
+test("operations access requires auth and fails closed without the database", async () => {
+  const app = await buildApp({ config, authVerifier: verifier, profileRepository: repository });
+  try {
+    const unauthorized = await app.inject({ method: "GET", url: "/api/v1/operations/access" });
+    assert.equal(unauthorized.statusCode, 401);
+    const authorized = await app.inject({ method: "GET", url: "/api/v1/operations/access", headers: { authorization: "Bearer verified-token" } });
+    assert.equal(authorized.statusCode, 200);
+    assert.deepEqual(authorized.json().data, { isAdmin: false });
+  } finally { await app.close(); }
+});
+
 test("feedback tickets require auth and are scoped to the authenticated user", async () => {
   const feedbackRepository = createFeedbackRepository();
   const app = await buildApp({ config, authVerifier: verifier, profileRepository: repository, feedbackRepository });

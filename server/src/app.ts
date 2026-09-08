@@ -18,6 +18,7 @@ import { knowledgeRoutes } from "./routes/knowledge.js";
 import { auditRoutes } from "./routes/audit.js";
 import { redfoxCredentialRoutes } from "./routes/redfox-credential.js";
 import { feedbackRoutes } from "./routes/feedback.js";
+import { operationsRoutes } from "./routes/operations.js";
 import { createProfileRepository, type ProfileRepository } from "./services/profile-repository.js";
 import { hashIdentity, recordUsageEvent } from "./services/usage-analytics.js";
 import { createPostgresRedfoxCredentialStore, type RedfoxCredentialStore } from "./services/redfox-credential-service.js";
@@ -140,6 +141,7 @@ export async function buildApp(options: BuildAppOptions) {
     prefix: "/api/v1",
     repository: options.feedbackRepository ?? createFeedbackRepository(options.config),
   });
+  await app.register(operationsRoutes, { prefix: "/api/v1", pool });
   if (pool) {
     const serviceClient = createSupabaseClient(options.config);
     await app.register(projectRoutes, { prefix: "/api/v1", client: serviceClient });

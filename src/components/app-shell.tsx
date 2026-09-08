@@ -1,5 +1,5 @@
 import {
-  BookOpen, CheckCircle2, ClipboardCheck, FolderKanban, Home, Search, ShieldAlert,
+  BarChart3, BookOpen, CheckCircle2, ClipboardCheck, FolderKanban, Home, Search, ShieldAlert,
   KeyRound, LogOut, MessageSquarePlus, UserRoundCheck, UserRoundX, X,
 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type PropsWithChildren, type ReactNode } from "react";
@@ -44,7 +44,7 @@ interface AppShellProps extends PropsWithChildren {
 }
 
 export function AppShell({ title, subtitle, action, children, mobileOpen, onMobileClose, showProjectSelector = false }: AppShellProps) {
-  const { user, profile, profileError, session, signOut } = useAuth();
+  const { user, profile, profileError, session, signOut, isAdmin } = useAuth();
   const handleApiKeyAuthExpired = useCallback(() => { void signOut(); }, [signOut]);
   const email = user?.email ?? "已登录用户";
   const displayName = profile?.display_name ?? (typeof user?.user_metadata.display_name === "string"
@@ -63,6 +63,7 @@ export function AppShell({ title, subtitle, action, children, mobileOpen, onMobi
               <span>{label}</span>
             </NavLink>
           ))}
+          {isAdmin && <NavLink to="/operations" className={({ isActive }) => `sidebar__link ${isActive ? "is-active" : ""}`}><BarChart3 size={17} strokeWidth={1.8} aria-hidden="true" /><span>运营中心</span></NavLink>}
         </nav>
         <ApiKeyControl accessToken={session?.access_token ?? ""} onAuthExpired={handleApiKeyAuthExpired} />
         <div className="sidebar__profile">
