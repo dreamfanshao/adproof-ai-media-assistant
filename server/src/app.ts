@@ -17,11 +17,14 @@ import { taskEventRoutes } from "./routes/task-events.js";
 import { knowledgeRoutes } from "./routes/knowledge.js";
 import { auditRoutes } from "./routes/audit.js";
 import { redfoxCredentialRoutes } from "./routes/redfox-credential.js";
+import { modelSettingsRoutes } from "./routes/model-settings.js";
 import { feedbackRoutes } from "./routes/feedback.js";
 import { operationsRoutes } from "./routes/operations.js";
 import { createProfileRepository, type ProfileRepository } from "./services/profile-repository.js";
 import { hashIdentity, recordUsageEvent } from "./services/usage-analytics.js";
 import { createPostgresRedfoxCredentialStore, type RedfoxCredentialStore } from "./services/redfox-credential-service.js";
+import { createPostgresModelSettingsStore, type ModelSettingsStore } from "./services/model-settings-service.js";
+import type { ModelProviderClient } from "./services/model-provider-service.js";
 import { createFeedbackRepository, type FeedbackRepository } from "./services/feedback-repository.js";
 import {
   InMemoryXhsConnectionService,
@@ -41,6 +44,8 @@ interface BuildAppOptions {
   xhsConnectionService?: XhsConnectionService;
   logger?: boolean;
   redfoxCredentialStore?: RedfoxCredentialStore;
+  modelSettingsStore?: ModelSettingsStore;
+  modelProviderClient?: ModelProviderClient;
   feedbackRepository?: FeedbackRepository;
 }
 
@@ -97,6 +102,15 @@ export async function buildApp(options: BuildAppOptions) {
     prefix: "/api/v1",
     store: redfoxCredentialStore,
     systemDefaultConfigured: Boolean(options.config.redfoxApiKey),
+  });
+  const modelSettingsStore = options.modelSettingsStore
+    ?? (pool && options.config.xhsSessionEncryptionKey
+      ? createPostgresModelSettingsStore(pool, options.config.xhsSessionEncryptionKey)
+      : undefined);
+  await app.register(modelSettingsRoutes, {
+    prefix: "/api/v1",
+    store: modelSettingsStore,
+    client: options.modelProviderClient,
   });
 
   app.post("/api/v1/analytics/signup", async (request, reply) => {

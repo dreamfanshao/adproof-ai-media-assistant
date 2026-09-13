@@ -1,4 +1,4 @@
-import { KeyRound, Search, Sparkles } from "lucide-react";
+import { KeyRound, Search, Sparkles, Square } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppShell, DemoBanner } from "../components/app-shell";
@@ -64,6 +64,13 @@ type RedfoxCredentialView = {
   replaceable: boolean;
 };
 
+const SEARCH_TARGET_OPTIONS = [20, 30, 40, 50] as const;
+type SearchTargetCount = (typeof SEARCH_TARGET_OPTIONS)[number];
+
+function isSearchTargetCount(value: number | undefined): value is SearchTargetCount {
+  return SEARCH_TARGET_OPTIONS.includes(value as SearchTargetCount);
+}
+
 function summaryLabel(summary: SearchSummary): string {
   const stages = summary.stages;
   return [
@@ -94,13 +101,14 @@ const searchLoopActionLabel: Record<string, string> = {
   search_more: "继续扩大检索",
   expand_keywords: "扩展检索关键词",
   soften_filter: "放宽一个高淘汰数据条件并重排",
-  finalize: "整理并返回前 20 人",
   stop: "整理部分结果",
 };
 
 function searchPhaseLabel(task: SearchTaskView): string {
   const action = task.loop_state?.action;
-  const loopLabel = action ? searchLoopActionLabel[action] ?? action : "";
+  const loopLabel = action === "finalize"
+    ? `整理并返回前 ${task.target_count ?? 20} 人`
+    : action ? searchLoopActionLabel[action] ?? action : "";
   return loopLabel ? `${searchStatusLabel[task.status] ?? task.status} · ${loopLabel}` : (searchStatusLabel[task.status] ?? task.status);
 }
 
@@ -113,8 +121,10 @@ export function CreatorsPage() {
   const token = session?.access_token ?? "";
   const projectId = isAllProjects ? null : selectedProject?.id ?? null;
   const [query, setQuery] = useState("粉丝小于1500，活跃度较高，有医美或护肤经验");
+  const [targetCount, setTargetCount] = useState<SearchTargetCount>(20);
   const [creators, setCreators] = useState<Creator[]>([]);
   const [running, setRunning] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [phase, setPhase] = useState<string | null>(null);
@@ -145,7 +155,8 @@ export function CreatorsPage() {
       throw new Error(task.error_message || "数据源请求失败");
     }
     if (task.status === "cancelled") {
-      setError(task.error_message || "本次检索已停止");
+      setError(null);
+      setNotice(task.error_message || "本次检索已停止");
       return;
     }
     const response = await apiRequest<{ data: ProjectCreatorRow[] }>(`/projects/${targetProjectId}/creators`, token);
@@ -157,8 +168,9 @@ export function CreatorsPage() {
       stages: task.stage_counts ?? {},
     });
     const added = task.persisted_count ?? 0;
-    setNotice(task.error_message || (added >= 20
-      ? "本批已新增 20 人。再次点击“开始检索”可获取下一批，项目历史达人会自动排除。"
+    const taskTarget = isSearchTargetCount(task.target_count) ? task.target_count : 20;
+    setNotice(task.error_message || (added >= taskTarget
+      ? `本批已新增 ${taskTarget} 人。再次点击“开始检索”可获取下一批，项目历史达人会自动排除。`
       : `本批新增 ${added} 人，当前检索范围内暂未发现更多符合条件且未在项目历史中出现的达人。`));
   }, [token]);
 
@@ -174,6 +186,7 @@ export function CreatorsPage() {
         try {
           const response = await apiRequest<{ data: SearchTaskView }>(`/search-tasks/${id}`, token, { cache: "no-store" });
           const task = response.data;
+          if (!inFlight.current || pollGeneration.current !== generation) return;
           consecutiveFailures = 0;
           setError(null);
           setRunning(!task.terminal);
@@ -204,6 +217,7 @@ export function CreatorsPage() {
             startedAt: task.created_at,
           }));
         } catch (reason) {
+          if (!inFlight.current || pollGeneration.current !== generation) return;
           if (handleAuthError(reason)) {
             inFlight.current = false;
             return;
@@ -233,6 +247,7 @@ export function CreatorsPage() {
       if (active) {
         inFlight.current = true;
         setQuery(active.query_text ?? "");
+        if (isSearchTargetCount(active.target_count)) setTargetCount(active.target_count);
         setRunning(true);
         setTaskId(active.id);
         setPhase(searchPhaseLabel(active));
@@ -283,6 +298,7 @@ export function CreatorsPage() {
         const active = response.data.find((task) => !task.terminal && ACTIVE_SEARCH_STATUSES.has(task.status));
         if (active) {
           setQuery(active.query_text ?? stored?.query ?? "");
+          if (isSearchTargetCount(active.target_count)) setTargetCount(active.target_count);
           setRunning(true);
           setTaskId(active.id);
           setPhase(searchPhaseLabel(active));
@@ -406,7 +422,7 @@ export function CreatorsPage() {
       const created = await apiRequest<{ data: { id: string } }>(
         `/projects/${projectId}/search-tasks`,
         token,
-        { method: "POST", body: JSON.stringify({ query_text: query.trim(), confirmed_rule: parsed.data, target_count: 20, platforms: ["xiaohongshu"] }) },
+        { method: "POST", body: JSON.stringify({ query_text: query.trim(), confirmed_rule: parsed.data, target_count: targetCount, platforms: ["xiaohongshu"] }) },
       );
       handedOff = true;
       submissionInFlight.current = false;
@@ -428,6 +444,39 @@ export function CreatorsPage() {
     }
   };
 
+  const cancelSearch = async () => {
+    const activeTaskId = taskId;
+    if (!token || !projectId || !activeTaskId || cancelling) return;
+    setCancelling(true);
+    setError(null);
+    try {
+      await apiRequest<{ data: { id: string; status: "cancelled" } }>(`/search-tasks/${activeTaskId}/cancel`, token, { method: "POST" });
+      inFlight.current = false;
+      pollGeneration.current += 1;
+      activePollTaskId.current = null;
+      window.localStorage.removeItem(`adproof.creator-search.${session?.user?.id ?? "current"}.${projectId}`);
+      setRunning(false);
+      setTaskId(null);
+      setPhase(null);
+      setNotice("本次检索已停止");
+    } catch (reason) {
+      if (handleAuthError(reason)) return;
+      if (reason instanceof ApiClientError && reason.code === "SEARCH_TASK_TERMINAL") {
+        inFlight.current = false;
+        pollGeneration.current += 1;
+        activePollTaskId.current = null;
+        setRunning(false);
+        setTaskId(null);
+        setPhase(null);
+        setNotice("检索已经结束，请刷新查看最新结果。");
+      } else {
+        setError(reason instanceof Error ? reason.message : "取消检索失败，请稍后重试");
+      }
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   const changeStatus = async (id: string, status: CreatorStatus) => {
     try {
       await updateProjectCreator(token, id, { decision_status: status });
@@ -437,10 +486,10 @@ export function CreatorsPage() {
     }
   };
 
-  return <AppShell showProjectSelector title="找达人" subtitle="使用自然语言检索小红书达人" action={<Button onClick={() => { if (running) return; setQuery(""); setCreators([]); setSummary(null); setNotice(null); }}>新建检索</Button>}>
+  return <AppShell showProjectSelector title="找达人" subtitle="使用自然语言检索小红书达人" action={<Button onClick={() => { if (running) return; setQuery(""); setTargetCount(20); setCreators([]); setSummary(null); setNotice(null); }}>新建检索</Button>}>
     <DemoBanner />
     <div className="project-label">当前项目： {selectedProject?.name ?? (isAllProjects ? "全部项目" : "未选择项目")}</div>
-    <Card className="prompt-card"><div className="prompt-card__input-row"><Sparkles size={20} /><textarea value={query} onChange={(event) => setQuery(event.target.value)} placeholder="请输入达人筛选条件，例如：粉丝小于1500、活跃度高、有医美经历" aria-label="达人检索条件" /><Button loading={running} disabled={running || !projectId || !query.trim()} onClick={() => void runSearch()} icon={<Search size={17} />}>开始检索</Button></div></Card>
+    <Card className="prompt-card"><div className="prompt-card__input-row"><Sparkles size={20} /><textarea value={query} onChange={(event) => setQuery(event.target.value)} placeholder="请输入达人筛选条件，例如：粉丝小于1500、活跃度高、有医美经历" aria-label="达人检索条件" /><div className="search-submit-controls"><label className="search-target-select"><span className="sr-only">本次返回人数</span><select value={targetCount} disabled={running} onChange={(event) => setTargetCount(Number(event.target.value) as SearchTargetCount)} aria-label="本次返回人数">{SEARCH_TARGET_OPTIONS.map((count) => <option key={count} value={count}>{count} 人</option>)}</select></label><Button loading={running} disabled={running || !projectId || !query.trim()} onClick={() => void runSearch()} icon={<Search size={17} />}>{running ? "检索中" : "开始检索"}</Button>{running && taskId && <Button tone="secondary" className="search-cancel-button" loading={cancelling} onClick={() => void cancelSearch()} icon={<Square size={14} fill="currentColor" />}>取消检索</Button>}</div></div></Card>
     {running && <div className="form-message form-message--info"><strong>正在检索：{searchStatusLabel[phase ?? ""] ?? phase ?? "准备中"}</strong><span>已提交的任务会在后台继续执行；请勿重复点击或刷新后再次提交。{taskId ? `（任务 ${taskId.slice(0, 8)}）` : ""}</span></div>}
     {!running && notice && <div className="form-message form-message--info credential-message"><span>{notice}</span>{isRedfoxBalanceMessage(notice) && <button type="button" className="credential-message__action" onClick={openCredentialModal}><KeyRound size={14} aria-hidden="true" />更换 API Key</button>}</div>}
     {error && <div className="form-message form-message--error credential-message"><span>{error}</span>{isRedfoxBalanceMessage(error) && <button type="button" className="credential-message__action" onClick={openCredentialModal}><KeyRound size={14} aria-hidden="true" />更换 API Key</button>}</div>}
@@ -448,7 +497,7 @@ export function CreatorsPage() {
       <header>
         <div>
           <h2>候选达人 {running ? "检索中" : creators.length}</h2>
-          <span>{summary ? summaryLabel(summary) : "每次最多新增 20 人；当前项目历史检索过的达人会自动排除"}</span>
+          <span>{summary ? summaryLabel(summary) : `本次最多新增 ${targetCount} 人；当前项目历史检索过的达人会自动排除`}</span>
         </div>
         <div className="results-header-actions">
           <CreatorExportButton accessToken={token} projectId={projectId ?? ""} fileName="creator-results" disabled={!projectId || !creators.length} />

@@ -10,7 +10,7 @@ export function DiscardedPage() {
   const accessToken = session?.access_token ?? "";
   const { projectId, creators, updateStatus, error, isAllProjects } = useProjectCreators("discarded");
   const discarded = useMemo(() => creators, [creators]);
-  const overLimit = discarded.filter((creator) => creator.followers > 1500).length;
+  const overLimit = discarded.filter((creator) => creator.followers !== null && creator.followers > 1500).length;
 
   return (
     <AppShell showProjectSelector title="已弃用达人" subtitle={isAllProjects ? "汇总所有项目中已弃用的达人，便于统一复盘。" : "保留弃用原因，便于项目内去重和复盘。"} action={

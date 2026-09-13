@@ -6,7 +6,7 @@ export interface Creator {
   platform: CreatorPlatform;
   name: string;
   handle: string;
-  followers: number;
+  followers: number | null;
   activity: number;
   match: number;
   tags: string[];

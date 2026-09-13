@@ -14,11 +14,11 @@ function saveJson(name: string, value: unknown) {
 const defaults: SkillDefinition[] = [
   {
     id: "creator_intent_structuring", name: "达人检索意图结构化", kind: "llm",
-    description: "把媒介专员的一句话需求拆成硬性条件、语义条件和排序偏好；批次人数由业务层固定为 20。",
+    description: "把媒介专员的一句话需求拆成硬性条件、语义条件和排序偏好；批次人数由业务层单独传入。",
     useWhen: ["用户输入自然语言找达人需求", "需要区分粉丝数等硬条件与内容语义条件"],
     notFor: ["不要用于判断具体达人是否命中", "不要用于审核广告法或企业规则"],
-    requiredInputs: ["query"], outputContract: "JSON: hardFilters, semanticConditions, limit=20, ranking",
-    prompt: "你是媒介助手的达人检索意图 Skill。将自然语言需求结构化为硬性数据条件和语义条件。批次目标固定返回 limit=20；不要用正则推断语义，不要补造用户没有说过的条件。只返回 JSON。",
+    requiredInputs: ["query"], outputContract: "JSON: hardFilters, semanticConditions, ranking",
+    prompt: "你是媒介助手的达人检索意图 Skill。将自然语言需求结构化为硬性数据条件和语义条件。批次目标由业务层单独传入，不要自行决定人数；不要用正则推断语义，不要补造用户没有说过的条件。只返回 JSON。",
     model: "gpt-5.6-sol", temperature: 0.1, enabled: true, version: 1, updatedAt: new Date().toISOString(),
   },
   {
@@ -107,9 +107,9 @@ const defaults: SkillDefinition[] = [
     prompt: "", model: "", temperature: 0, enabled: true, version: 1, updatedAt: new Date().toISOString(),
   },
   {
-    id: "creator_continuation_control", name: "20 人批次续检控制", kind: "code",
+    id: "creator_continuation_control", name: "可配置批次续检控制", kind: "code",
     description: "根据有效人数、数据源游标和安全调用预算决定完成、部分完成或允许继续检索。",
-    useWhen: ["每页候选处理完成", "批次达到 20 人或接近调用预算"],
+    useWhen: ["每页候选处理完成", "批次达到目标人数或接近调用预算"],
     notFor: ["不能用固定 100 人候选池提前终止", "数据源未耗尽时不能错误标记不可继续"],
     requiredInputs: ["persistedCount", "batchTarget", "cursor", "sourceExhausted", "requestBudget"], outputContract: "status, canContinue, partialReason",
     prompt: "", model: "", temperature: 0, enabled: true, version: 1, updatedAt: new Date().toISOString(),

@@ -6,6 +6,8 @@ import { runCreatorSearchJob } from "./xhs-search-executor.js";
 import { runKnowledgeIngestJob } from "./knowledge-ingest-executor.js";
 import { runContentAuditJob } from "./audit-executor.js";
 import { createPostgresRedfoxCredentialStore } from "../../server/src/services/redfox-credential-service.js";
+import { createPostgresModelSettingsStore } from "../../server/src/services/model-settings-service.js";
+import { withRuntimeModelSettings } from "../../agent/llm/runtime-model-settings.js";
 import { acquireWorkerSingleton, resolveRedfoxRuntimeKey, WORKER_RUNTIME_VERSION, type WorkerSingletonLease } from "./worker-runtime.js";
 
 function loadEnv(): WorkerEnv {
@@ -24,13 +26,26 @@ const pool = createWorkerPool(env);
 const redfoxCredentialStore = env.XHS_SESSION_ENCRYPTION_KEY
   ? createPostgresRedfoxCredentialStore(pool, env.XHS_SESSION_ENCRYPTION_KEY)
   : null;
+const modelSettingsStore = env.XHS_SESSION_ENCRYPTION_KEY
+  ? createPostgresModelSettingsStore(pool, env.XHS_SESSION_ENCRYPTION_KEY)
+  : null;
 const workerId = `worker-${process.pid}`;
 const POLL_MS = 5_000;
 let singletonLease: WorkerSingletonLease | null = null;
 let stopping = false;
 
 async function runJob(job: SearchJob): Promise<void> {
-  if (job.type === "creator_search") {
+  let modelSettings = null;
+  try {
+    modelSettings = await modelSettingsStore?.resolve(job.user_id) ?? null;
+  } catch (error) {
+    const code = typeof error === "object" && error !== null && "code" in error ? String(error.code) : "";
+    if (code !== "42P01") throw error;
+    console.warn("[worker] model settings migration is not applied; using environment model configuration");
+  }
+
+  await withRuntimeModelSettings(modelSettings, async () => {
+    if (job.type === "creator_search") {
     // 每个新任务重新读取 .env.local；用户在前台保存的专属 Key 优先于系统默认 Key。
     // Key 仅保存在当前任务内存中，不进入 job payload、日志或任务结果。
     const refreshedEnv = { ...env, ...loadEnv() } as WorkerEnv;
@@ -45,17 +60,18 @@ async function runJob(job: SearchJob): Promise<void> {
       WORKER_RUNTIME_VERSION,
     } as WorkerEnv;
     console.log(`[worker] ${job.id.slice(0, 8)}… redfox=${selectedKey.source}#${selectedKey.fingerprint ?? "none"} endpoint=${runtimeEnv.REDFOX_CREATOR_SEARCH_PATH ?? "/story/api/xhs/ability/searchWork"} runtime=${WORKER_RUNTIME_VERSION}`);
-    await runCreatorSearchJob(runtimeEnv, client, pool, job);
-  } else if (job.type === "knowledge_ingest") {
-    await runKnowledgeIngestJob(env, client, pool, job);
-  } else if (job.type === "content_audit") {
-    await runContentAuditJob(env, client, pool, job);
-  } else {
-    await pool.query(
-      "update private.jobs set status='failed', terminal=true, error_code='UNSUPPORTED_JOB_TYPE', completed_at=now(), locked_by=null, lock_expires_at=null, updated_at=now() where id=$1",
-      [job.id],
-    );
-  }
+      await runCreatorSearchJob(runtimeEnv, client, pool, job);
+    } else if (job.type === "knowledge_ingest") {
+      await runKnowledgeIngestJob(env, client, pool, job);
+    } else if (job.type === "content_audit") {
+      await runContentAuditJob(env, client, pool, job);
+    } else {
+      await pool.query(
+        "update private.jobs set status='failed', terminal=true, error_code='UNSUPPORTED_JOB_TYPE', completed_at=now(), locked_by=null, lock_expires_at=null, updated_at=now() where id=$1",
+        [job.id],
+      );
+    }
+  });
 }
 
 async function tick(): Promise<void> {

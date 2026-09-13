@@ -48,12 +48,12 @@ export function EmptyState({ title, description, action }: { title: string; desc
   );
 }
 
-export function Modal({ open, title, children, onClose, className = "" }: PropsWithChildren<{ open: boolean; title: string; onClose: () => void; className?: string }>) {
+export function Modal({ open, title, titleNote, children, onClose, className = "" }: PropsWithChildren<{ open: boolean; title: string; titleNote?: ReactNode; onClose: () => void; className?: string }>) {
   if (!open) return null;
   return (
     <div className="modal-layer" role="presentation" onMouseDown={onClose}>
       <section className={`modal ${className}`} role="dialog" aria-modal="true" aria-labelledby="modal-title" onMouseDown={(event) => event.stopPropagation()}>
-        <header><h2 id="modal-title">{title}</h2><button onClick={onClose} aria-label="关闭"><X size={20} /></button></header>
+        <header><div className="modal__title"><h2 id="modal-title">{title}</h2>{titleNote && <span>{titleNote}</span>}</div><button onClick={onClose} aria-label="关闭"><X size={20} /></button></header>
         {children}
       </section>
     </div>

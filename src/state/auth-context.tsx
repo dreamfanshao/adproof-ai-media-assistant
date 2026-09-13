@@ -4,12 +4,11 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type PropsWithChildren,
 } from "react";
 import { supabase, supabaseConfigError } from "../lib/supabase";
-import { ApiClientError, apiRequest } from "../lib/api-client";
+import { ApiClientError, apiRequest, configureApiAuthRecovery } from "../lib/api-client";
 
 type AuthStatus = "loading" | "anonymous" | "authenticated" | "misconfigured";
 
@@ -58,11 +57,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
-  const authRecoveryAttempted = useRef(false);
 
   useEffect(() => {
     const client = supabase;
     if (!client) return;
+
+    configureApiAuthRecovery(async () => {
+      const { data, error } = await client.auth.refreshSession();
+      if (error || !data.session) return null;
+      return data.session.access_token;
+    });
 
     let active = true;
     void client.auth.getSession().then(async ({ data, error }) => {
@@ -97,6 +101,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     });
 
     return () => {
+      configureApiAuthRecovery(null);
       active = false;
       listener.subscription.unsubscribe();
     };
@@ -114,29 +119,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setProfileError(null);
     void apiRequest<ProfileResponse>("/me", session.access_token)
       .then((response) => {
-        if (active) {
-          authRecoveryAttempted.current = false;
-          setProfile(response.data);
-        }
+        if (active) setProfile(response.data);
       })
       .catch((error: unknown) => {
         if (!active) return;
         if (error instanceof ApiClientError && error.status === 401) {
-          if (!authRecoveryAttempted.current) {
-            authRecoveryAttempted.current = true;
-            void requireClient().auth.refreshSession().then(({ data, error: refreshError }) => {
-              if (!active) return;
-              if (!refreshError && data.session) {
-                setSession(data.session);
-                setStatus("authenticated");
-                return;
-              }
-              setSession(null);
-              setStatus("anonymous");
-              void requireClient().auth.signOut({ scope: "local" });
-            });
-            return;
-          }
           setProfile(null);
           setProfileError(null);
           setSession(null);

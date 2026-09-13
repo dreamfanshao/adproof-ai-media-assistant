@@ -74,6 +74,7 @@ export interface RedfoxClientOptions {
 const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
 const REALTIME_SEARCH_PATH = "/story/api/xhs/ability/searchWork";
 const REALTIME_USER_WORK_LIST_PATH = "/story/api/xhs/ability/userWorkList";
+const REALTIME_ACCOUNT_DETAIL_PATH = "/story/api/xhs/ability/accountDetail";
 
 export function redfoxSearchRequestParams(
   path: string,
@@ -342,7 +343,7 @@ export class RedfoxXhsClient {
   private retryCount = 0;
   private cacheHitCount = 0;
   private readonly requestCountByEndpoint: Record<string, number> = {};
-  private lastRequestAt = 0;
+  private nextRequestAt = 0;
 
   constructor(options: RedfoxClientOptions) {
     const env = (name: string, fallback?: string) => process.env[('REDFOX_' + name)] ?? fallback;
@@ -414,9 +415,12 @@ export class RedfoxXhsClient {
   private async requestJson(path: string, params: Record<string, unknown>): Promise<JsonRecord> {
     let lastError: unknown;
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
-      const wait = this.requestDelayMs - (Date.now() - this.lastRequestAt);
+      // Reserve a slot synchronously: concurrent callers must not wake and
+      // fire together after the same delay.
+      const slot = Math.max(Date.now(), this.nextRequestAt);
+      this.nextRequestAt = slot + this.requestDelayMs;
+      const wait = slot - Date.now();
       if (wait > 0) await sleep(wait);
-      this.lastRequestAt = Date.now();
       const normalizedPath = path.replace(/^\/+/, "");
       if (this.requestCount >= this.maxRequestsPerSearch) {
         throw new Error(`本次检索达到 RedFox 调用上限 ${this.maxRequestsPerSearch}，已停止继续消耗积分。`);
@@ -502,7 +506,11 @@ export class RedfoxXhsClient {
     return this.cachedRequest(`note:video:${this.videoNoteDetailPath}:${noteId}`, 6 * 60 * 60_000, () => this.requestJson(this.videoNoteDetailPath, { workId: noteId }));
   }
   async getUserInfo(userId: string, accountId?: string): Promise<JsonRecord> {
-    return this.cachedRequest(`account:${userId}:${accountId ?? userId}`, 6 * 60 * 60_000, () => this.requestJson(this.userInfoPath, { accountId: accountId ?? userId, userId }));
+    // Realtime discovery includes small accounts not present in the curated
+    // library. Use the matching documented realtime profile endpoint.
+    const path = this.usesRealtimeCreatorApi() ? REALTIME_ACCOUNT_DETAIL_PATH : this.userInfoPath;
+    const params = this.usesRealtimeCreatorApi() ? { userId } : { accountId: accountId ?? userId, userId };
+    return this.cachedRequest(`account:${this.baseUrl}:${path}:${userId}:${accountId ?? userId}`, 6 * 60 * 60_000, () => this.requestJson(path, params), 10 * 60_000);
   }
   async getUserPostedNotes(userId: string, redId?: string): Promise<JsonRecord> {
     const path = this.usesRealtimeCreatorApi() ? REALTIME_USER_WORK_LIST_PATH : this.userPostedNotesPath;

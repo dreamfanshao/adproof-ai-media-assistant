@@ -15,7 +15,7 @@
     "start:worker:production": "node dist-worker/index.mjs",
     "test:release": "node --test scripts/test/release.test.mjs",
     "start:api": "node --env-file=.env.local dist-server/server/src/index.js",
-    "test:server": "node --import tsx --test server/test/app.test.ts",
+    "test:server": "node --import tsx --test server/test/*.test.ts",
     "test:worker": "node --import tsx --test worker/test/*.test.ts",
     "test:eval": "node --import tsx --test eval/test/*.test.ts",
     "test": "npm run test:server && npm run test:worker && npm run test:eval",

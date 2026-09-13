@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type pg from "pg";
+import { OrderedPrefetch } from "./ordered-prefetch.js";
 import { run as runSkillsAgent } from "../../agent/run-agent.js";
 import type { AgentPlan } from "../../agent/skills/types.js";
 import { buildCreatorSearchKeywords } from "./creator-search-keywords.js";
@@ -46,6 +47,10 @@ type RankedCandidate = {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export function isModelCredentialError(message: string): boolean {
+  return /\bHTTP\s+(?:401|403)\b|api\s*key[^\n]{0,80}(?:invalid|无效|鉴权失败)|authentication\s+fails/i.test(message);
 }
 
 /** Always attempts both terminal writes so a task-update failure cannot leave
@@ -398,7 +403,7 @@ export function creatorSearchPartialMessage(stageCounts: SearchStageCounts, targ
 }
 
 export function creatorSearchQualityPartialMessage(stageCounts: SearchStageCounts, target: number): string {
-  return `本次检查 ${stageCounts.creators_discovered} 个账号；${stageCounts.quality_filtered} 个候选未达到 AI 最低匹配标准，最终新增 ${stageCounts.persisted}/${target} 人。系统没有使用低质量候选补足 20 人；可继续扩大数据源范围，最低语义质量、有效证据和综合分门槛不会放宽。`;
+  return `本次检查 ${stageCounts.creators_discovered} 个账号；${stageCounts.quality_filtered} 个候选未达到 AI 最低匹配标准，最终新增 ${stageCounts.persisted}/${target} 人。系统没有使用低质量候选补足 ${target} 人；可继续扩大数据源范围，最低语义质量、有效证据和综合分门槛不会放宽。`;
 }
 
 export function creatorSearchLoopPolicy(
@@ -442,6 +447,11 @@ export function searchMaxDurationMs(raw: unknown): number {
   return Number.isFinite(configured) && configured > 0
     ? Math.max(60_000, configured)
     : Number.POSITIVE_INFINITY;
+}
+
+export function normalizeSearchBatchTarget(raw: unknown): number {
+  const configured = Number(raw);
+  return Number.isFinite(configured) ? Math.min(50, Math.max(1, Math.floor(configured))) : 20;
 }
 
 export function creatorSearchWavePlan(target: number, persisted: number, keywordCount: number): {
@@ -491,7 +501,7 @@ export function creatorSemanticAnalysisQuery(query: string, rule: ParsedRule): s
   ].join("\n");
 }
 
-async function analyzeNote(query: string, note: RedfoxNoteCandidate, source: string, sharedPlan?: AgentPlan, profile?: RedfoxCreatorProfile) {
+export async function analyzeNote(query: string, note: RedfoxNoteCandidate, source: string, sharedPlan?: AgentPlan, profile?: RedfoxCreatorProfile) {
   try {
     const run = await runSkillsAgent(query, [candidateForNote(note, query, source, profile)], sharedPlan);
     const candidate = run.candidates[0] as { semanticMatch?: { matched?: boolean; confidence?: number; evidence?: string[]; reasons?: string[] }; imageEvidence?: unknown; matchScore?: number } | undefined;
@@ -607,12 +617,24 @@ export async function runRedfoxCreatorSearchJob(env: WorkerEnv, client: Supabase
   const query = queryText?.trim() || keyword;
   await updateSearchTask(client, taskId, { status: "collecting", progress: 5, stageMessageCode: "SEARCH_ANALYZING_INTENT" });
   let structuredIntent: unknown;
+  let intentModelError: string | null = null;
   try {
     const intentPlan: AgentPlan = { planner: "deterministic-fallback", steps: [{ id: "intent", capabilityType: "skill", capabilityId: "creator_intent_structuring", purpose: "提取达人检索关键词" }] };
     const intentRun = await runSkillsAgent(query, [], intentPlan);
     structuredIntent = intentRun.structuredQuery;
-  } catch {
+    const intentStep = intentRun.steps.find((step) => step.capabilityId === "creator_intent_structuring");
+    if (intentRun.status !== "scored" && typeof intentStep?.output === "string") intentModelError = intentStep.output;
+  } catch (error) {
     structuredIntent = undefined;
+    intentModelError = errorMessage(error);
+  }
+  if (intentModelError && isModelCredentialError(intentModelError)) {
+    const message = "当前模型 API Key 无效或没有访问权限，请在“模型与 API Key”中更换密钥并测试连接后重新检索。";
+    await finalizeSearchExecution(
+      () => updateSearchTask(client, taskId, { status: "failed", terminal: true, progress: 100, errorCode: "MODEL_API_KEY_INVALID", errorMessage: message }),
+      () => finishJob(pool, { jobId: job.id, userId: job.user_id, status: "failed", stage: "analyzing", terminal: true, progress: 100, messageCode: "MODEL_API_KEY_INVALID", errorCode: "MODEL_API_KEY_INVALID", errorMessage: message, retryable: false }),
+    );
+    return;
   }
   const qualityPolicy = creatorQualityPolicyFromIntent(structuredIntent);
   const semanticAnalysisQuery = creatorSemanticAnalysisQuery(query, rule);
@@ -627,7 +649,7 @@ export async function runRedfoxCreatorSearchJob(env: WorkerEnv, client: Supabase
     maxKeywords: 16,
   });
 
-  const batchTarget = Math.min(20, Math.max(1, Number(targetCount) || 20));
+  const batchTarget = normalizeSearchBatchTarget(targetCount);
   const searchPolicy = creatorSearchLoopPolicy(
     env.REDFOX_AUTO_CONTINUE_MAX_ROUNDS,
   );
@@ -707,7 +729,7 @@ export async function runRedfoxCreatorSearchJob(env: WorkerEnv, client: Supabase
   let nextPageBudget = 1;
   // `persisted` is the only completion counter. `eligibleCandidateCount` is a
   // temporary in-memory pool and must never be added to it, otherwise a saved
-  // candidate can be counted twice and a target-20 search can stop early.
+  // candidate can be counted twice and a configurable-target search can stop early.
   while (!loopStopReason && shouldContinueCreatorSearch({ persisted, target: batchTarget, sourceExhausted: sourceExhausted && !pendingBatch?.notes.length, providerBudgetError })) {
     loopIteration += 1;
     const waveControl = await currentExecutionControl();
@@ -781,10 +803,26 @@ export async function runRedfoxCreatorSearchJob(env: WorkerEnv, client: Supabase
     const candidateNotesToAnalyze = candidateNotes.slice(0, candidateAnalysisLimit);
     const alreadyInProject = await existingProjectCreatorIds(client, projectId, candidateNotes.map((note) => note.userId));
     const screeningRows: SearchScreeningInput[] = [];
-    // Account-detail calls are the dominant wait in this pipeline. Prefetch a
-    // two-item lookahead while the current candidate is being analyzed. The
-    // actual semantic and hard-filter decisions remain ordered and deterministic.
-    const hydrationPromises = new Map<string, ReturnType<typeof collector.hydrateCreatorProfile>>();
+    // Overlap profile I/O and AI for at most four candidates. Persistence,
+    // screening decisions and cursor advancement remain ordered below.
+    const preparedNotes = new OrderedPrefetch(candidateNotesToAnalyze, 4, async (rawNote) => {
+      if (alreadyInProject.has(rawNote.userId) || seenUsers.has(rawNote.userId)) return null;
+      const hydration = await collector.hydrateCreatorProfile(rawNote, { includePostedNotes: false, includeNoteDetail: false }).catch((error) => ({
+        profile: null, noteDetailError: null, accountDetailError: errorMessage(error), postedNotesError: null,
+      }));
+      const followers = hydration.profile?.fields.followers;
+      const canAnalyze = hydration.profile && !isProviderBudgetExhausted(hydration.accountDetailError ?? "") && (!followersEnabled || (
+        followers !== null && followers !== undefined
+        && (!followersCond || satisfies(followers, followersCond))
+        && (!followersMaxCond || satisfies(followers, followersMaxCond))
+      ));
+      // Recheck after network I/O: cancellation/lease loss must not launch AI.
+      if (await currentExecutionControl() !== "continue") return null;
+      const note = canAnalyze && !(rawNote.text.trim() && (rawNote.noteType === "video" || rawNote.imageUrls.length > 0))
+        ? await collector.enrichNote(rawNote) : rawNote;
+      const noteAnalysis = canAnalyze ? await analyzeNote(semanticAnalysisQuery, note, provider, sharedPlan, hydration.profile!) : null;
+      return { hydration, note, noteAnalysis };
+    });
     let processedAll = true;
     let consumedCandidates = 0;
     await updateSearchTask(client, taskId, { status: "hard_filtering", collectedCount: stageCounts.notes_collected, persistedCount: persisted, duplicateCount: duplicates, stageCounts, progress: searchProgress(loopIteration, searchPolicy.maxRounds, persisted, batchTarget), stageMessageCode: "SEARCH_HARD_FILTERING" });
@@ -823,15 +861,17 @@ export async function runRedfoxCreatorSearchJob(env: WorkerEnv, client: Supabase
         processedAll = false;
         break;
       }
-      for (const lookahead of candidateNotesToAnalyze.slice(candidateIndex, candidateIndex + 2)) {
-        if (!alreadyInProject.has(lookahead.userId) && !seenUsers.has(lookahead.userId) && !hydrationPromises.has(lookahead.userId)) {
-          hydrationPromises.set(lookahead.userId, collector.hydrateCreatorProfile(lookahead, { includePostedNotes: false, includeNoteDetail: false }).catch((error) => ({
-            profile: null,
-            noteDetailError: null,
-            accountDetailError: errorMessage(error),
-            postedNotesError: null,
-          })));
-        }
+      const prepared = await preparedNotes.take(candidateIndex);
+      const preparedControl = await currentExecutionControl();
+      if (preparedControl === "cancelled") {
+        await finishCancelled("analyzing");
+        return;
+      }
+      if (preparedControl === "lease_lost") return;
+      if (preparedControl === "timeout") {
+        timedOut = true;
+        processedAll = false;
+        break;
       }
       consumedCandidates += 1;
       if (alreadyInProject.has(rawNote.userId)) {
@@ -849,7 +889,8 @@ export async function runRedfoxCreatorSearchJob(env: WorkerEnv, client: Supabase
         continue;
       }
       seenUsers.add(rawNote.userId);
-      const hydration = await (hydrationPromises.get(rawNote.userId) ?? collector.hydrateCreatorProfile(rawNote, { includePostedNotes: false, includeNoteDetail: false }));
+      if (!prepared) continue;
+      const { hydration } = prepared;
       let profile = hydration.profile;
       if (hydration.accountDetailError) {
         upstreamErrors += 1;
@@ -895,9 +936,12 @@ export async function runRedfoxCreatorSearchJob(env: WorkerEnv, client: Supabase
         }
         continue;
       }
-      const note = rawNote.text.trim() && (rawNote.noteType === "video" || rawNote.imageUrls.length > 0) ? rawNote : await collector.enrichNote(rawNote);
+      if (!prepared.noteAnalysis) {
+        if (providerBudgetError) break;
+        continue;
+      }
+      const { note, noteAnalysis } = prepared;
       semanticAttempts += 1;
-      const noteAnalysis = await analyzeNote(semanticAnalysisQuery, note, provider, sharedPlan, profile);
       if (!noteAnalysis.analysisComplete) {
         analysisErrors += 1;
         stageCounts.analysis_errors += 1;

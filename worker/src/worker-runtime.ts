@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type pg from "pg";
 
-export const WORKER_RUNTIME_VERSION = "2026-09-04.no-wall-clock-search-cap-v1";
+export const WORKER_RUNTIME_VERSION = "2026-09-10.realtime-profile-parallel-v1";
 const WORKER_SINGLETON_LOCK = "adproof-media-assistant.worker.singleton.v1";
 
 export type RedfoxKeySource = "user" | "system" | "none";

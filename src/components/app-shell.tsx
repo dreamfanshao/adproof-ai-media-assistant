@@ -1,10 +1,11 @@
 import {
   BarChart3, BookOpen, CheckCircle2, ClipboardCheck, FolderKanban, Home, Search, ShieldAlert,
-  KeyRound, LogOut, MessageSquarePlus, UserRoundCheck, UserRoundX, X,
+  BrainCircuit, KeyRound, LogOut, MessageSquarePlus, UserRoundCheck, UserRoundX, X,
 } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent, type PropsWithChildren, type ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { Button, Modal } from "./ui";
+import { ModelSettingsPanel } from "../pages/model-settings-page";
 import { ApiClientError, apiRequest } from "../lib/api-client";
 import { useAuth } from "../state/auth-context";
 import { ALL_PROJECTS_SCOPE, useProjectScope } from "../state/project-scope";
@@ -65,6 +66,7 @@ export function AppShell({ title, subtitle, action, children, mobileOpen, onMobi
           ))}
           {isAdmin && <NavLink to="/operations" className={({ isActive }) => `sidebar__link ${isActive ? "is-active" : ""}`}><BarChart3 size={17} strokeWidth={1.8} aria-hidden="true" /><span>运营中心</span></NavLink>}
         </nav>
+        <ModelSettingsControl accessToken={session?.access_token ?? ""} onAuthExpired={handleApiKeyAuthExpired} />
         <ApiKeyControl accessToken={session?.access_token ?? ""} onAuthExpired={handleApiKeyAuthExpired} />
         <div className="sidebar__profile">
           <div className="avatar avatar--small">媒</div>
@@ -87,6 +89,21 @@ export function AppShell({ title, subtitle, action, children, mobileOpen, onMobi
         <main className="page-content">{children}</main>
       </div>
     </div>
+  );
+}
+
+function ModelSettingsControl({ accessToken, onAuthExpired }: { accessToken: string; onAuthExpired: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" className="sidebar__api-key sidebar__model-settings" onClick={() => setOpen(true)}>
+        <BrainCircuit size={15} aria-hidden="true" />
+        <span>模型与 API Key</span>
+      </button>
+      <Modal open={open} title="模型与 API Key" titleNote="请选择支持视觉能力的模型" onClose={() => setOpen(false)} className="modal--model-settings">
+        <ModelSettingsPanel accessToken={accessToken} onAuthExpired={onAuthExpired} />
+      </Modal>
+    </>
   );
 }
 
@@ -164,12 +181,12 @@ function ApiKeyControl({ accessToken, onAuthExpired }: { accessToken: string; on
         className="sidebar__api-key"
         onClick={() => { setValue(""); setError(null); setOpen(true); }}
         disabled={credential ? !credential.replaceable : false}
-        title={credential?.source === "user" ? "更换个人 API Key" : "配置个人 API Key"}
+        title={credential?.source === "user" ? "更换数据源 API Key" : "配置数据源 API Key"}
       >
         <KeyRound size={15} aria-hidden="true" />
-        <span>{credential?.source === "user" ? "更换 API Key" : "配置 API Key"}</span>
+        <span>{credential?.source === "user" ? "更换数据源 Key" : "配置数据源 Key"}</span>
       </button>
-      <Modal open={open} title="配置 API Key" onClose={close} className="modal--credential">
+      <Modal open={open} title="配置 RedFox 数据源 API Key" onClose={close} className="modal--credential">
         <form className="modal-form credential-form" onSubmit={(event) => void save(event)}>
           <label>
             API Key

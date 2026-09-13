@@ -37,7 +37,7 @@ export const CREATOR_PRODUCTION_PIPELINE: RuntimeCapability[] = [
   { id: "creator_ranking", capabilityType: "skill", purpose: "按证据、活跃度和数据完整度排序" },
   { id: "creator_evidence_grounding", capabilityType: "skill", purpose: "将结论绑定到具体笔记与采集证据" },
   { id: "persist_creator_result", capabilityType: "tool", purpose: "保存达人、项目关系和证据" },
-  { id: "creator_continuation_control", capabilityType: "skill", purpose: "判断达到 20 人、数据源耗尽或可继续" },
+  { id: "creator_continuation_control", capabilityType: "skill", purpose: "判断达到本次目标人数、数据源耗尽或可继续" },
   { id: "save_search_progress", capabilityType: "tool", purpose: "保存分页游标与筛选历史" },
 ];
 

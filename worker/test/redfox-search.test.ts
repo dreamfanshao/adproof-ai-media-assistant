@@ -5,7 +5,13 @@ import { normalizeCreatorIntent } from "../../agent/run-agent.js";
 import { CREATOR_SEARCH_STRATEGY_VERSION, creatorSearchKey, isSearchSourceExhausted, projectSearchHistoryFromRows, saveSearchSessionProgress } from "../src/creator-search-session.js";
 import { normalizeProfile, redfoxSearchRequestParams, RedfoxXhsClient, type RedfoxNoteCandidate } from "../src/redfox-xhs-client.js";
 import { chooseSearchLoopAction, expandedCreatorSearchKeywords } from "../src/creator-search-loop.js";
-import { creatorCandidateAnalysisLimit, creatorQualityPolicyFromIntent, creatorSearchBudgetStopMessage, creatorSearchLoopPolicy, creatorSearchPartialMessage, creatorSearchWavePlan, creatorSemanticAnalysisQuery, finalizeSearchExecution, isProviderBudgetExhausted, isProviderCredentialError, passesCandidateGates, passesCreatorQualityGate, passesSemanticPreflight, recentPostMetrics, satisfiesRecentLikes, scoreCreatorCandidate, searchMaxDurationMs, selectDominantHardFilter, selectRepresentativeNotes, selectTopCreatorCandidates, shouldContinueCreatorSearch } from "../src/redfox-search-executor.js";
+import { creatorCandidateAnalysisLimit, creatorQualityPolicyFromIntent, creatorSearchBudgetStopMessage, creatorSearchLoopPolicy, creatorSearchPartialMessage, creatorSearchWavePlan, creatorSemanticAnalysisQuery, finalizeSearchExecution, isModelCredentialError, isProviderBudgetExhausted, isProviderCredentialError, normalizeSearchBatchTarget, passesCandidateGates, passesCreatorQualityGate, passesSemanticPreflight, recentPostMetrics, satisfiesRecentLikes, scoreCreatorCandidate, searchMaxDurationMs, selectDominantHardFilter, selectRepresentativeNotes, selectTopCreatorCandidates, shouldContinueCreatorSearch } from "../src/redfox-search-executor.js";
+
+test("model authentication errors are detected before candidate analysis loops", () => {
+  assert.equal(isModelCredentialError("deepseek HTTP 401"), true);
+  assert.equal(isModelCredentialError("Authentication Fails, Your api key is invalid"), true);
+  assert.equal(isModelCredentialError("deepseek request timeout (60000ms)"), false);
+});
 
 test("search loop never softens followers and may soften the highest-impact secondary filter", () => {
   const action = chooseSearchLoopAction(
@@ -462,6 +468,15 @@ test("one accepted creator does not end a target-20 search", () => {
   assert.equal(shouldContinueCreatorSearch({ persisted: 20, target: 20, sourceExhausted: false }), false);
   assert.equal(shouldContinueCreatorSearch({ persisted: 1, target: 20, sourceExhausted: true }), false);
   assert.equal(shouldContinueCreatorSearch({ persisted: 1, target: 20, sourceExhausted: false, providerBudgetError: "budget" }), false);
+});
+
+test("search batch target supports the UI range up to fifty", () => {
+  assert.equal(normalizeSearchBatchTarget(20), 20);
+  assert.equal(normalizeSearchBatchTarget(30), 30);
+  assert.equal(normalizeSearchBatchTarget(40), 40);
+  assert.equal(normalizeSearchBatchTarget(50), 50);
+  assert.equal(normalizeSearchBatchTarget(80), 50);
+  assert.equal(normalizeSearchBatchTarget(undefined), 20);
 });
 
 test("model intent output cannot override the fixed twenty-creator batch target", () => {

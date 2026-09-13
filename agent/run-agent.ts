@@ -82,7 +82,10 @@ const invokeSemanticAssessment = async (ids: string[], payload: unknown): Promis
     "质量底线：严格遵守语义条件中的 AND/OR/any 逻辑；any 条件命中任一分支即可，不得错误要求全部分支同时命中。evidence 必须列出候选内容中的具体事实，不能复述检索条件。只有泛科普、机构宣传或主题无关时必须 matched=false。粉丝数、点赞数、发帖数和时间窗口由代码判断，不得因这些数据字段缺失而判语义不匹配。",
     "只进行一次综合判断并返回一个 JSON 对象，必须包含 accountAssessment、experienceEvidence、matched、confidence、evidence、reasons。明确的机构、医院、门店或营销号不能当作个人博主；账号类型暂时 unknown 时，如果笔记有清楚的第一人称体验或本人皮肤困扰证据，允许 matched=true 并适当降低 confidence。没有本人经历证据时返回 unknown，不得猜测。",
   ].join("\n\n");
-  return model({ system, prompt: JSON.stringify(payload), temperature: 0.1 });
+  // A bounded per-search timeout avoids discarding candidates solely because
+  // generation slightly exceeds 30s. Other product model calls are unchanged.
+  return model({ system, prompt: JSON.stringify(payload), temperature: 0.1,
+    timeoutMs: Number(process.env.CREATOR_LLM_TIMEOUT_MS ?? process.env.LLM_TIMEOUT_MS ?? 60_000) });
 };
 
 const skillConcurrency = Math.min(8, Math.max(1, Number(process.env.AGENT_SKILL_CONCURRENCY ?? "4") || 4));

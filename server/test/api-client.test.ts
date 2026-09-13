@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ApiClientError, apiRequest } from "../../src/lib/api-client.js";
+import { ApiClientError, apiRequest, configureApiAuthRecovery } from "../../src/lib/api-client.js";
 
 async function withFetch(response: Response, run: () => Promise<void>): Promise<void> {
   const originalFetch = globalThis.fetch;
@@ -48,4 +48,90 @@ test("apiRequest preserves structured API errors", async () => {
         && error.message === "已有任务正在执行",
     );
   });
+});
+
+test("apiRequest refreshes the session once and retries a 401 response", async () => {
+  const authorizationHeaders: string[] = [];
+  let refreshCount = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    authorizationHeaders.push(new Headers(init?.headers).get("Authorization") ?? "");
+    if (authorizationHeaders.length === 1) {
+      return new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "登录已过期" } }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ data: { ok: true } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  configureApiAuthRecovery(async () => {
+    refreshCount += 1;
+    return "fresh-token";
+  });
+
+  try {
+    const response = await apiRequest<{ data: { ok: boolean } }>("/projects", "expired-token");
+    assert.equal(response.data.ok, true);
+    assert.equal(refreshCount, 1);
+    assert.deepEqual(authorizationHeaders, ["Bearer expired-token", "Bearer fresh-token"]);
+  } finally {
+    configureApiAuthRecovery(null);
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("concurrent 401 responses share one token refresh", async () => {
+  let refreshCount = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const authorization = new Headers(init?.headers).get("Authorization");
+    return authorization === "Bearer fresh-token"
+      ? new Response(JSON.stringify({ data: { ok: true } }), { status: 200 })
+      : new Response(JSON.stringify({ error: { code: "UNAUTHORIZED" } }), { status: 401 });
+  };
+  configureApiAuthRecovery(async () => {
+    refreshCount += 1;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    return "fresh-token";
+  });
+
+  try {
+    const responses = await Promise.all([
+      apiRequest<{ data: { ok: boolean } }>("/projects", "expired-token"),
+      apiRequest<{ data: { ok: boolean } }>("/search-tasks/task-1", "expired-token"),
+      apiRequest<{ data: { ok: boolean } }>("/me", "expired-token"),
+    ]);
+    assert.equal(refreshCount, 1);
+    assert.ok(responses.every((response) => response.data.ok));
+  } finally {
+    configureApiAuthRecovery(null);
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("apiRequest preserves the final 401 when session refresh fails", async () => {
+  let requestCount = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    requestCount += 1;
+    return new Response(JSON.stringify({ error: { code: "UNAUTHORIZED", message: "登录已过期" } }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
+  configureApiAuthRecovery(async () => null);
+
+  try {
+    await assert.rejects(
+      () => apiRequest("/projects", "expired-token"),
+      (error: unknown) => error instanceof ApiClientError && error.status === 401,
+    );
+    assert.equal(requestCount, 1);
+  } finally {
+    configureApiAuthRecovery(null);
+    globalThis.fetch = originalFetch;
+  }
 });

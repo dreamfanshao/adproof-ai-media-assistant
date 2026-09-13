@@ -4,6 +4,37 @@ const runtimeEnv = (import.meta as ImportMeta & {
 
 const apiBaseUrl = (runtimeEnv?.VITE_API_BASE_URL?.trim() || "/api/v1").replace(/\/$/, "");
 
+type AccessTokenRefresher = () => Promise<string | null>;
+
+let accessTokenRefresher: AccessTokenRefresher | null = null;
+let refreshInFlight: Promise<string | null> | null = null;
+let lastRecoveredToken: { expiredToken: string; accessToken: string } | null = null;
+
+export function configureApiAuthRecovery(refresher: AccessTokenRefresher | null): void {
+  accessTokenRefresher = refresher;
+  refreshInFlight = null;
+  lastRecoveredToken = null;
+}
+
+async function recoverAccessToken(expiredToken: string): Promise<string | null> {
+  if (lastRecoveredToken?.expiredToken === expiredToken) {
+    return lastRecoveredToken.accessToken;
+  }
+  if (!accessTokenRefresher) return null;
+
+  if (!refreshInFlight) {
+    refreshInFlight = accessTokenRefresher()
+      .catch(() => null)
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+
+  const accessToken = await refreshInFlight;
+  if (accessToken) lastRecoveredToken = { expiredToken, accessToken };
+  return accessToken;
+}
+
 interface ApiErrorBody {
   error?: {
     code?: string;
@@ -28,15 +59,21 @@ export async function apiRequest<T>(
   accessToken: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const send = (token: string) => fetch(`${apiBaseUrl}${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
       ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...init.headers,
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${token}`,
     },
   });
+
+  let response = await send(accessToken);
+  if (response.status === 401) {
+    const refreshedToken = await recoverAccessToken(accessToken);
+    if (refreshedToken) response = await send(refreshedToken);
+  }
 
   if (response.status === 204) return undefined as T;
 
