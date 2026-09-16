@@ -11,7 +11,7 @@ function getAuthMessage(error: unknown) {
   }
   if (message.includes("Invalid login credentials")) return "邮箱或密码不正确。";
   if (message.includes("Email not confirmed")) return "邮箱尚未验证，请先完成邮件确认。";
-  if (message.includes("User already registered")) return "该邮箱已经注册，请直接登录。";
+  if (/user already registered|already registered/i.test(message)) return "该邮箱已注册，请切换到登录后继续。";
   if (message.includes("Password should be")) return "密码强度不足，请至少使用 8 位字符。";
   if (message.includes("两次输入的密码不一致")) return "两次输入的密码不一致，请重新确认。";
   if (/token.*expired|expired.*token|invalid.*token|otp.*expired|otp.*invalid/i.test(message)) return "验证码无效或已过期，请重新获取。";
@@ -33,6 +33,7 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
+  const [registrationBlocked, setRegistrationBlocked] = useState(false);
 
   useEffect(() => {
     if (resendCountdown <= 0) return undefined;
@@ -57,6 +58,9 @@ export function LoginPage() {
         setMessage("请先点击上方“获取验证码”，再输入邮箱验证码完成注册。");
       }
     } catch (error) {
+      if (error instanceof Error && /user already registered|already registered/i.test(error.message)) {
+        setRegistrationBlocked(true);
+      }
       setIsError(true);
       setMessage(getAuthMessage(error));
     } finally {
@@ -95,6 +99,9 @@ export function LoginPage() {
     try {
       await requestVerificationCode();
     } catch (error) {
+      if (error instanceof Error && /user already registered|already registered/i.test(error.message)) {
+        setRegistrationBlocked(true);
+      }
       setIsError(true);
       setMessage(getAuthMessage(error));
     } finally {
@@ -128,6 +135,7 @@ export function LoginPage() {
     setResendCountdown(0);
     setShowPassword(false);
     setShowConfirmPassword(false);
+    setRegistrationBlocked(false);
   };
 
   const editRegistrationEmail = () => {
@@ -136,6 +144,7 @@ export function LoginPage() {
     setResendCountdown(0);
     setMessage(null);
     setIsError(false);
+    setRegistrationBlocked(false);
   };
 
   return (
@@ -166,7 +175,7 @@ export function LoginPage() {
             <span>邮箱</span>
             <div className="auth-field__control">
               <Mail size={19} aria-hidden="true" />
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required autoComplete="email" readOnly={mode === "sign-up" && awaitingVerification} placeholder="you@email.com" />
+              <input type="email" value={email} onChange={(event) => { setEmail(event.target.value); setRegistrationBlocked(false); }} required autoComplete="email" readOnly={mode === "sign-up" && awaitingVerification} placeholder="you@email.com" />
             </div>
           </label>
           {mode === "sign-up" && (
@@ -179,7 +188,7 @@ export function LoginPage() {
                       <ShieldCheck size={19} aria-hidden="true" />
                       <input className="auth-code-input" type="text" value={verificationCode} onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 8))} required={awaitingVerification} minLength={6} maxLength={8} inputMode="numeric" autoComplete="one-time-code" placeholder="请输入验证码" disabled={!awaitingVerification} />
                     </div>
-                    <button className="auth-code-button" type="button" disabled={loading || resendCountdown > 0} onClick={() => void (awaitingVerification ? resendConfirmation() : sendVerificationCode())}>
+                    <button className="auth-code-button" type="button" disabled={loading || resendCountdown > 0 || registrationBlocked} onClick={() => void (awaitingVerification ? resendConfirmation() : sendVerificationCode())}>
                       {resendCountdown > 0 ? `${resendCountdown}s 后重发` : awaitingVerification ? "重新获取" : "获取验证码"}
                     </button>
                   </div>
