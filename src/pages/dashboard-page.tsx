@@ -98,7 +98,7 @@ export function DashboardPage() {
     setError(null);
     try {
       const projectRows = await listProjects(accessToken);
-      const projectIds = projectRows.map((project) => project.id);
+      const projectIds = projectRows.filter((project) => project.status !== "archived").map((project) => project.id);
       const [creatorRows, searchRows, auditResponse] = await Promise.all([
         loadCreatorsForProjects(accessToken, projectIds),
         Promise.all(projectIds.map(async (projectId) => {
