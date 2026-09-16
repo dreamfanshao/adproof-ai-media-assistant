@@ -30,6 +30,9 @@ export function OperationsPage() {
     {loading && <div className="form-message">正在加载运营数据…</div>}
     {error && <div className="form-message form-message--error">{error}</div>}
     {overview && <>
+      <section className="operations-section operations-section--north-star"><header className="operations-section__heading"><div><span className="operations-eyebrow">NORTH STAR</span><h2>北极星指标</h2></div><small>累计、按项目与达人去重</small></header><div className="operations-grid operations-grid--north-star">
+        <Metric label="已选达人转化率" value={overview.creatorSelectionRate == null ? "—" : `${overview.creatorSelectionRate}%`} hint={overview.retrievedCreators ? `已选 ${overview.selectedCreators} ÷ 检索 ${overview.retrievedCreators}` : "暂无已进入候选池的达人"} icon={CheckCircle2} />
+      </div></section>
       <section className="operations-section"><header className="operations-section__heading"><div><span className="operations-eyebrow">USER SCALE</span><h2>用户规模</h2></div><small>更新于 {new Date(overview.generatedAt).toLocaleString("zh-CN")}</small></header><div className="operations-grid">
         <Metric label="累计注册用户" value={overview.registeredUsers} hint="来自已创建的用户资料" icon={Users} />
         <Metric label="今日新增" value={overview.newUsersToday} hint={`近7日新增 ${overview.newUsers7d}`} icon={BarChart3} />

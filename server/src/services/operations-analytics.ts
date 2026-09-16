@@ -20,7 +20,7 @@ export async function getOperationsOverview(pool: pg.Pool): Promise<Record<strin
   const dayStart = chinaStartOfDay();
   const weekStart = new Date(dayStart.getTime() - 7 * 86_400_000);
   const monthStart = new Date(dayStart.getTime() - 30 * 86_400_000);
-  const [registrationResult, eventResult, feedbackResult, usage] = await Promise.all([
+  const [registrationResult, eventResult, feedbackResult, creatorSelectionResult, usage] = await Promise.all([
     pool.query(
       `select
          count(*)::int as registered_users,
@@ -45,6 +45,13 @@ export async function getOperationsOverview(pool: pg.Pool): Promise<Record<strin
          count(*) filter (where status in ('resolved', 'closed'))::int as resolved,
          count(*) filter (where category = 'bug')::int as bugs
        from public.feedback_tickets`,
+    ),
+    pool.query(
+      `select
+         count(*)::int as retrieved_creators,
+         count(*) filter (where decision_status = 'selected')::int as selected_creators
+       from public.project_creators
+       where search_task_id is not null`,
     ),
     getUsageOverview(30),
   ]);
@@ -78,6 +85,9 @@ export async function getOperationsOverview(pool: pg.Pool): Promise<Record<strin
   const registeredUsers = Number(registrations.registered_users ?? 0);
   const adoptedUsers = Number(usage.adoptedUsers ?? 0);
   const feedback = feedbackResult.rows[0] ?? {};
+  const creatorSelection = creatorSelectionResult.rows[0] ?? {};
+  const retrievedCreators = Number(creatorSelection.retrieved_creators ?? 0);
+  const selectedCreators = Number(creatorSelection.selected_creators ?? 0);
   return {
     generatedAt: new Date().toISOString(),
     registeredUsers,
@@ -92,6 +102,11 @@ export async function getOperationsOverview(pool: pg.Pool): Promise<Record<strin
     creatorSearchesToday: searchesToday,
     auditsToday,
     coreTasksToday: searchesToday + auditsToday,
+    retrievedCreators,
+    selectedCreators,
+    creatorSelectionRate: retrievedCreators
+      ? Number((selectedCreators / retrievedCreators * 100).toFixed(1))
+      : null,
     totalApiCalls: Number(usage.totalApiCalls ?? 0),
     totalApiErrors: Number(usage.totalApiErrors ?? 0),
     apiUsage: usage.apiUsage ?? [],
@@ -104,6 +119,7 @@ export async function getOperationsOverview(pool: pg.Pool): Promise<Record<strin
     },
     notes: [
       "注册人数来自 user_profiles，DAU 来自已登录用户的业务行为事件。",
+      "北极星指标为已选达人 ÷ 真实检索后进入候选池的达人；按项目与达人去重，使用当前选择状态累计计算。",
       "用户标识只保存不可逆哈希，不展示邮箱、Token 或原始请求内容。",
     ],
   };

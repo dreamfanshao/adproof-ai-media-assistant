@@ -149,6 +149,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .form-message--success { background: #edf8f2; color: #2f7550; }
 .auth-resend { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--color-text-brand); font-size: 12px; font-weight: 600; cursor: pointer; }
 .auth-resend:disabled { opacity: .5; cursor: not-allowed; }
+.auth-verification-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.auth-code-input { letter-spacing: .18em; font-variant-numeric: tabular-nums; }
 .auth-status-page { min-height: 100vh; display: grid; place-items: center; background: var(--color-bg-canvas); color: var(--color-text-secondary); font-size: 14px; }
 
 .connect-page { min-height: 100vh; padding: 18px 24px; display: grid; place-items: center; background: var(--color-bg-canvas); }
@@ -862,7 +864,11 @@ body, .app-shell { background: #f8fafc; }
 .operations-section__heading small { color: #94a3b8; font-size: 12px; }
 .operations-eyebrow { color: #4f7df3; font-size: 10px; font-weight: 800; letter-spacing: .14em; }
 .operations-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.operations-grid--north-star { grid-template-columns: minmax(280px, 1fr); }
 .operations-metric { position: relative; display: grid; gap: 7px; min-height: 142px; padding: 20px; }
+.operations-section--north-star .operations-metric { min-height: 158px; border-color: #a9c4ff; background: linear-gradient(135deg, #f7faff 0%, #edf3ff 100%); }
+.operations-section--north-star .operations-metric strong { color: #285fd6; font-size: 38px; }
+.operations-section--north-star .operations-metric__icon { background: #dce8ff; color: #285fd6; }
 .operations-metric > span:not(.operations-metric__icon) { color: #64748b; font-size: 13px; font-weight: 700; }
 .operations-metric strong { color: #1f2937; font-size: 30px; letter-spacing: -.04em; }
 .operations-metric small { color: #94a3b8; font-size: 11px; }

@@ -83,6 +83,49 @@ async function feedbackSummary() {
   }
 }
 
+async function creatorSelectionSummary() {
+  if (!feedbackAdminClient) {
+    return { creatorSelectionConfigured: false, retrievedCreators: 0, selectedCreators: 0, creatorSelectionRate: null };
+  }
+  try {
+    const [retrievedResult, selectedResult] = await Promise.all([
+      feedbackAdminClient
+        .from("project_creators")
+        .select("id", { count: "exact", head: true })
+        .not("search_task_id", "is", null),
+      feedbackAdminClient
+        .from("project_creators")
+        .select("id", { count: "exact", head: true })
+        .not("search_task_id", "is", null)
+        .eq("decision_status", "selected"),
+    ]);
+    if (retrievedResult.error) throw retrievedResult.error;
+    if (selectedResult.error) throw selectedResult.error;
+    const retrievedCreators = retrievedResult.count ?? 0;
+    const selectedCreators = selectedResult.count ?? 0;
+    return {
+      creatorSelectionConfigured: true,
+      retrievedCreators,
+      selectedCreators,
+      creatorSelectionRate: retrievedCreators
+        ? Number((selectedCreators / retrievedCreators * 100).toFixed(1))
+        : null,
+    };
+  } catch (error) {
+    app.log.warn({ err: error }, "Creator selection summary unavailable");
+    return { creatorSelectionConfigured: false, retrievedCreators: 0, selectedCreators: 0, creatorSelectionRate: null };
+  }
+}
+
+async function analyticsOverview() {
+  const [usage, feedback, creatorSelection] = await Promise.all([
+    getUsageOverview(),
+    feedbackSummary(),
+    creatorSelectionSummary(),
+  ]);
+  return { ...usage, feedback, ...creatorSelection };
+}
+
 const app = Fastify({ logger: true });
 registerModuleRoutes(app);
 registerModuleActionRoutes(app);
@@ -390,9 +433,9 @@ app.get("/api/workspace/overview", async () => {
       userData: { source: "Supabase", privacy: "No secrets or tokens", note: "User details require sign-in to the main system." },
     },
     providers: { textModelConfigured: modelConfigured, redfox: { configured: redfoxConfigured, baseUrl: process.env.REDFOX_BASE_URL ?? "https://redfox.hk", usage: "Usage is recorded by local server telemetry; provider billing is shown in the RedFoxHub console." } },
-    analytics: await getUsageOverview()  } };
+    analytics: await analyticsOverview()  } };
 });
-app.get("/api/analytics/overview", async () => ({ data: { ...(await getUsageOverview()), feedback: await feedbackSummary() } }));
+app.get("/api/analytics/overview", async () => ({ data: await analyticsOverview() }));
 
 app.get("/api/admin/feedback", { preHandler: requireEvalAdmin }, async (_request, reply) => {
   try {

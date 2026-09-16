@@ -38,6 +38,7 @@ interface AuthContextValue {
   isAdmin: boolean | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<SignUpResult>;
+  verifySignUpOtp: (email: string, token: string) => Promise<void>;
   resendSignUpConfirmation: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
@@ -162,17 +163,26 @@ export function AuthProvider({ children }: PropsWithChildren) {
       const { data, error } = await requireClient().auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/login` },
       });
       if (error) throw error;
       void fetch("/api/v1/analytics/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: data.user?.id }) }).catch(() => undefined);
       return { requiresEmailConfirmation: data.session === null };
     },
+    async verifySignUpOtp(email, token) {
+      const { data, error } = await requireClient().auth.verifyOtp({
+        email,
+        token,
+        type: "signup",
+      });
+      if (error) throw error;
+      if (!data.session) throw new Error("验证码已通过，但未获得有效会话，请重新登录。");
+      setSession(data.session);
+      setStatus("authenticated");
+    },
     async resendSignUpConfirmation(email) {
       const { error } = await requireClient().auth.resend({
         type: "signup",
         email,
-        options: { emailRedirectTo: `${window.location.origin}/login` },
       });
       if (error) throw error;
     },

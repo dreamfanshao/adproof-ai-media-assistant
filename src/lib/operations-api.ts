@@ -14,6 +14,9 @@ export interface OperationsOverview {
   creatorSearchesToday: number;
   auditsToday: number;
   coreTasksToday: number;
+  retrievedCreators: number;
+  selectedCreators: number;
+  creatorSelectionRate: number | null;
   totalApiCalls: number;
   totalApiErrors: number;
   apiUsage: Array<{ provider: string; calls: number; errors: number; avgDurationMs: number | null }>;
